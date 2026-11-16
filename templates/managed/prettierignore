@@ -1,0 +1,10 @@
+# Managed by aem-kit. Prettier only formats Block Sources and global CSS:
+# JS/JSON are formatted by ESLint (Prettier conflicts with Airbnb rules) and
+# Generated Artifacts / Drafts are written by the Block Build.
+/*
+!/blocks/
+/blocks/*/*
+!/blocks/*/*.html
+!/styles/
+/styles/*
+!/styles/*.css

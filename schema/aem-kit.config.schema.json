@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/victormarques-cogna/aem-kit/schema/aem-kit.config.schema.json",
+  "title": "aem-kit.config.json",
+  "description": "Configuração do projeto para o aem-kit. Depois de alterar, rode `npm run aem:init`.",
+  "type": "object",
+  "required": ["project", "language", "font"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "project": {
+      "type": "object",
+      "required": ["name"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "minLength": 1, "description": "Nome legível do projeto (README, AGENTS.md)." },
+        "description": { "type": "string", "description": "Descrição curta do site." }
+      }
+    },
+    "language": {
+      "enum": ["pt-BR", "en"],
+      "description": "Idioma dos labels do Universal Editor, textos padrão e Drafts."
+    },
+    "font": {
+      "type": "object",
+      "required": ["family"],
+      "additionalProperties": false,
+      "properties": {
+        "family": { "type": "string", "minLength": 1, "description": "Família principal (ex.: Inter). Vira --font-family e font-sans." },
+        "url": { "type": "string", "pattern": "^https://", "description": "CSS da fonte (ex.: Google Fonts), carregado em styles/fonts.css após o LCP." },
+        "fallback": {
+          "type": "object",
+          "description": "Métricas do fallback local (Arial) para evitar CLS na troca de fonte.",
+          "additionalProperties": false,
+          "properties": {
+            "sizeAdjust": { "type": "string", "pattern": "^-?\\d+(\\.\\d+)?%$" },
+            "ascentOverride": { "type": "string", "pattern": "^-?\\d+(\\.\\d+)?%$" },
+            "descentOverride": { "type": "string", "pattern": "^-?\\d+(\\.\\d+)?%$" },
+            "lineGapOverride": { "type": "string", "pattern": "^-?\\d+(\\.\\d+)?%$" }
+          }
+        }
+      }
+    },
+    "colors": {
+      "type": "object",
+      "description": "Tokens de cor. Cada chave vira --color-{nome} e as classes bg-{nome}, text-{nome}, border-{nome}…",
+      "propertyNames": { "pattern": "^[a-z][a-z0-9-]*$" },
+      "additionalProperties": { "type": "string", "minLength": 1 }
+    },
+    "breakpoints": {
+      "type": "object",
+      "description": "Substitui os breakpoints padrão do Tailwind (sm 640px, md 768px, lg 1024px, xl 1280px, 2xl 1536px).",
+      "propertyNames": { "pattern": "^[a-z0-9][a-z0-9-]*$" },
+      "additionalProperties": { "type": "string", "pattern": "^\\d+(\\.\\d+)?(px|rem|em)$" }
+    }
+  }
+}

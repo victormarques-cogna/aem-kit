@@ -1,0 +1,10 @@
+{
+  "tailwindCSS.experimental.configFile": "styles/tailwind.css",
+  "tailwindCSS.classAttributes": ["class", "className"],
+  "tailwindCSS.includeLanguages": {
+    "html": "html"
+  },
+  "editor.quickSuggestions": {
+    "strings": "on"
+  }
+}

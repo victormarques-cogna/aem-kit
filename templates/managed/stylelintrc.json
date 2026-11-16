@@ -1,0 +1,29 @@
+{
+  "extends": ["stylelint-config-standard"],
+  "overrides": [
+    {
+      "files": ["styles/tailwind.css"],
+      "rules": {
+        "import-notation": null,
+        "at-rule-empty-line-before": null,
+        "at-rule-no-unknown": [
+          true,
+          {
+            "ignoreAtRules": [
+              "theme",
+              "source",
+              "utility",
+              "variant",
+              "custom-variant",
+              "plugin",
+              "apply",
+              "reference",
+              "config",
+              "tailwind"
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}
