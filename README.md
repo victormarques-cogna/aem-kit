@@ -8,14 +8,14 @@ Configura um repositório AEM Edge Delivery (xwalk), recém-criado pelo Cloud Ma
 2. Rode o init uma vez sem config, para criar o `aem-kit.config.json` de exemplo:
 
    ```sh
-   npx github:victormarques-cogna/aem-kit#v0.2.0 init
+   npx github:victormarques-cogna/aem-kit#v0.3.0 init
    ```
 
 3. Preencha `aem-kit.config.json` (nome, descrição, idioma, fonte, cores, breakpoints opcionais). O editor valida pelo schema.
 4. Rode o init de novo. Ele instala as dependências, o Chromium do Playwright, os hooks e gera tudo:
 
    ```sh
-   npx github:victormarques-cogna/aem-kit#v0.2.0 init
+   npx github:victormarques-cogna/aem-kit#v0.3.0 init
    ```
 
 5. Revise com `git diff` e commite.
@@ -39,6 +39,7 @@ O pre-commit roda `aem-kit check --staged`: Block Build só dos blocos alterados
 - **Managed Files** (sobrescritos a cada init): `.prettierrc.json`, `.prettierignore`, `.stylelintrc.json`, `.htmlvalidate.json`, `.editorconfig`, `.npmrc`, `.vscode/`, `.husky/pre-commit*`, `.github/workflows/aem-kit-check.yaml`, `scripts/render-template.js`, `styles/fonts.css`, `styles/tailwind.css`, `AGENTS.md`, `CONTEXT.md`, `CLAUDE.md`, `docs/adr/0001-*`, `.cursor/rules/aem-kit.mdc`, comando `criar-bloco` em `.claude/commands/` e `.cursor/commands/`.
 - **Regiões gerenciadas**: `aem-kit:font-vars` e `aem-kit:font-face` em `styles/styles.css`; a seção "Project notes" do `AGENTS.md` (e "Contexto do projeto" do `CONTEXT.md`) é preservada.
 - **Seed Files** (criados uma vez, depois do projeto): `styles/styles.css` e `README.md`. Se o seed do kit mudar, o init avisa; `--diff` mostra a diferença.
+- **xwalk.json**: garante `public.xwalk.multi-field.enabled: true` (necessário para campos `data-multi`), mantendo as outras chaves.
 - **package.json**: scripts `aem:*`, `check`, `format`; devDependencies da toolchain; nome/descrição enquanto ainda forem os do boilerplate.
 - Limpeza da toolchain antiga copiada em `tools/`, das fontes Roboto do boilerplate e de qualquer `yarn.lock` (o npm lê o `yarn.lock` e o `npm ci` falha quando ele diverge do `package-lock.json`).
 

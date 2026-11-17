@@ -91,6 +91,19 @@ function fieldModel(field, file) {
   if (!FIELD_COMPONENTS.has(component)) {
     throw new Error(`${file}: data-component="${component}" não é suportado. Use text, richtext ou reference.`);
   }
+  if ('data-multi' in field) {
+    if (component !== 'text') {
+      throw new Error(`${file}: data-multi em "${name}" só é suportado com data-component="text".`);
+    }
+    // Multi-value text field: one input per value in the properties panel, delivered as <ul><li>.
+    return {
+      component: 'text',
+      name,
+      label,
+      valueType: 'string',
+      multi: true,
+    };
+  }
   if (component === 'reference') {
     return {
       component: 'reference',
@@ -127,18 +140,18 @@ function uniqueFieldModels(fields, file) {
 /**
  * @param {Record<string, string>[]} fields
  * @param {string[]} inners
- * @returns {Record<string, string>}
+ * @returns {Record<string, string | string[]>}
  */
 function fieldDefaults(fields, inners) {
-  /** @type {Record<string, string>} */
+  /** @type {Record<string, string | string[]>} */
   const values = {};
   fields.forEach((field, index) => {
     const name = field['data-field'];
     const raw = inners[index] ?? '';
     const kind = field['data-component'] || 'text';
-    values[name] = kind === 'text'
-      ? raw.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
-      : raw;
+    const text = raw.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    if ('data-multi' in field) values[name] = text ? [text] : [];
+    else values[name] = kind === 'text' ? text : raw;
   });
   return values;
 }
@@ -154,6 +167,9 @@ function componentPartial(blockId, model, file, html) {
   const title = model.block['data-title'] || blockId;
   if (toClassName(title) !== blockId) {
     throw new Error(`${file}: data-title "${title}" gera a classe "${toClassName(title)}", diferente da pasta "${blockId}".`);
+  }
+  if (model.itemFields.some((field) => 'data-multi' in field)) {
+    throw new Error(`${file}: data-multi não é suportado dentro de data-item; use um campo do bloco.`);
   }
   const blockFields = uniqueFieldModels(model.blockFields, file);
   const itemFields = uniqueFieldModels(model.itemFields, file);

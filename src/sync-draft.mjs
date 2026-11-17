@@ -65,8 +65,10 @@ export function extractDataFieldInners(html) {
             tagMatch = tagRe.exec(html);
           }
         }
-        if (insideItem) itemInners.push(inner);
-        else blockInners.push(inner);
+        // Multi-value fields are delivered by AEM as a list, one <li> per value.
+        const value = 'data-multi' in attrs ? `<ul><li>${inner}</li></ul>` : inner;
+        if (insideItem) itemInners.push(value);
+        else blockInners.push(value);
       }
       match = openRe.exec(html);
     }

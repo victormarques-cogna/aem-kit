@@ -208,6 +208,16 @@ export default async function init(root, opts = {}) {
   await write('.htmlvalidate.json', template('managed/htmlvalidate.json'));
   await write('.editorconfig', template('managed/editorconfig'));
   await write('.npmrc', template('managed/npmrc'));
+
+  // data-multi fields need AEM's multi-field rendering (<ul><li>); keep any other xwalk settings.
+  const xwalkPath = path.join(root, 'xwalk.json');
+  const xwalk = existsSync(xwalkPath) ? JSON.parse(await readFile(xwalkPath, 'utf8')) : {};
+  if (xwalk.public?.xwalk?.['multi-field']?.enabled !== true) {
+    xwalk.public = { ...xwalk.public };
+    xwalk.public.xwalk = { ...xwalk.public.xwalk };
+    xwalk.public.xwalk['multi-field'] = { ...xwalk.public.xwalk['multi-field'], enabled: true };
+    await write('xwalk.json', `${JSON.stringify(xwalk, null, 2)}\n`);
+  }
   await write('.vscode/settings.json', template('managed/vscode-settings.json'));
   await write('.vscode/extensions.json', template('managed/vscode-extensions.json'));
   await write('.husky/pre-commit', template('managed/husky-pre-commit'));

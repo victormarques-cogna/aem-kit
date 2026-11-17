@@ -8,6 +8,7 @@ const AUTHORING_ATTRS = [
   'data-field',
   'data-component',
   'data-label',
+  'data-multi',
 ];
 
 /**
@@ -29,6 +30,24 @@ function cellHasContent(cell) {
 }
 
 /**
+ * Repeats a multi-value slot once per authored value (AEM delivers them as <ul><li>).
+ * @param {Element} slot Template element marked with data-multi
+ * @param {Element} [cell] Authored cell
+ */
+function fillMulti(slot, cell) {
+  const items = cell ? [...cell.querySelectorAll('li')] : [];
+  const values = items.length
+    ? items.map((li) => li.textContent.trim())
+    : [cell?.textContent.trim() ?? ''];
+  const copies = values.filter(Boolean).map((value) => {
+    const copy = slot.cloneNode(true);
+    copy.textContent = value;
+    return copy;
+  });
+  slot.replaceWith(...copies);
+}
+
+/**
  * Copies authored cells into template slots, in document order.
  * @param {Element[]} slots Field slots
  * @param {Element[]} cells Authored cells
@@ -36,6 +55,10 @@ function cellHasContent(cell) {
 function fillSlots(slots, cells) {
   slots.forEach((slot, index) => {
     const cell = cells[index];
+    if (slot.hasAttribute('data-multi')) {
+      fillMulti(slot, cell);
+      return;
+    }
     if (!cell) return;
     const kind = slot.getAttribute('data-component') || 'text';
     if (kind === 'text') slot.textContent = cell.textContent.trim();

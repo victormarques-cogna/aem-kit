@@ -7,11 +7,11 @@ Entrada: {{ARGS}}
 ## Passos
 
 1. **Entenda o design.** Se recebeu link do Figma e houver uma ferramenta/MCP do Figma disponível, use-a para ler a estrutura, textos, cores e espaçamentos. Se for um print, analise a imagem. Se faltar informação essencial (o que é editável pelo autor, o que se repete), pergunte antes de seguir.
-2. **Modele o conteúdo antes do HTML.** Liste os fields que o autor edita (`text` para textos curtos sem formatação, `richtext` para texto formatado, `reference` para imagens) e se há um item repetível (`data-item`). Prefira poucos fields bem nomeados.
+2. **Modele o conteúdo antes do HTML.** Liste os fields que o autor edita (`text` para textos curtos sem formatação, `richtext` para texto formatado, `reference` para imagens) e o que se repete: lista em que cada entrada é um único texto curto → um campo `text` com `data-multi` no elemento que se repete (o autor edita tudo no painel do bloco); entradas com mais de um field → item repetível (`data-item`). Prefira poucos fields bem nomeados.
 3. **Crie o scaffold:** `npm run aem:generate-block -- "<Nome do bloco>"`. Nunca crie os arquivos do bloco à mão.
 4. **Escreva o Block Source** em `blocks/<nome>/<nome>.html`:
    - Só classes Tailwind, mobile first (`sm`, `md`, `lg`, `xl`), usando os tokens do projeto listados em `AGENTS.md` (ex.: `bg-primary`, `font-sans`). Valor solto (`bg-[#...]`) só se não houver token; nesse caso sugira o token para o `aem-kit.config.json`.
-   - Marcadores: `data-block`/`data-title` na raiz, `data-field` + `data-component` + `data-label` em cada field, `data-item` + `data-item-title` no item repetível.
+   - Marcadores: `data-block`/`data-title` na raiz, `data-field` + `data-component` + `data-label` em cada field, `data-item` + `data-item-title` no item repetível, ou `data-multi` no elemento de uma lista simples.
    - `data-label`, `data-item-title` e o texto padrão no idioma do projeto.
    - HTML semântico: um heading, hierarquia correta, `alt` em imagens, botões de verdade para ações; `reference` sempre num container, nunca direto no `<img>`.
 5. **Comportamento** (acordeão, carrossel, abas…): crie `blocks/<nome>/<nome>.enhance.js` com `export default function enhance(block)`, usando atributos `data-*` próprios como gancho (veja `blocks/*/*.enhance.js` existentes). Sem dependências externas.
