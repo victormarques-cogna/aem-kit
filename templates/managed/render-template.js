@@ -9,6 +9,7 @@ const AUTHORING_ATTRS = [
   'data-component',
   'data-label',
   'data-multi',
+  'data-options',
 ];
 
 /**
@@ -48,6 +49,37 @@ function fillMulti(slot, cell) {
 }
 
 /**
+ * Select: exposes the chosen value as data-{field} (style it with data-[field=value]:…).
+ * @param {Element} slot
+ * @param {Element} [cell]
+ */
+function fillSelect(slot, cell) {
+  const [first] = (slot.getAttribute('data-options') || '').split(',');
+  const fallback = (first || '').split(':')[0].trim();
+  const value = cell?.textContent.trim() || fallback;
+  slot.setAttribute(`data-${slot.getAttribute('data-field')}`, value);
+}
+
+/**
+ * Link: AEM delivers `{field}` + `{field}Text` as one <a>; copy href, text and title.
+ * @param {Element} slot Template <a>
+ * @param {Element} [cell]
+ */
+function fillLink(slot, cell) {
+  const link = cell?.querySelector('a');
+  const text = (link || cell)?.textContent.trim();
+  if (!link && !text) {
+    slot.remove();
+    return;
+  }
+  if (link) {
+    slot.setAttribute('href', link.getAttribute('href'));
+    if (link.title) slot.setAttribute('title', link.title);
+  }
+  if (text) slot.textContent = text;
+}
+
+/**
  * Copies authored cells into template slots, in document order.
  * @param {Element[]} slots Field slots
  * @param {Element[]} cells Authored cells
@@ -59,8 +91,16 @@ function fillSlots(slots, cells) {
       fillMulti(slot, cell);
       return;
     }
-    if (!cell) return;
     const kind = slot.getAttribute('data-component') || 'text';
+    if (kind === 'select') {
+      fillSelect(slot, cell);
+      return;
+    }
+    if (kind === 'link') {
+      fillLink(slot, cell);
+      return;
+    }
+    if (!cell) return;
     if (kind === 'text') slot.textContent = cell.textContent.trim();
     else slot.replaceChildren(...cell.childNodes);
   });
@@ -105,7 +145,10 @@ export default function renderTemplate(block, template) {
       const cells = [...row.children];
       if (!cells.some(cellHasContent)) return;
       const item = itemTemplate.cloneNode(true);
-      fillSlots([...item.querySelectorAll('[data-field]')], cells);
+      // The item element itself may be a field (e.g. a select that colors the card).
+      const slots = [...item.querySelectorAll('[data-field]')];
+      if (item.hasAttribute('data-field')) slots.unshift(item);
+      fillSlots(slots, cells);
       moveInstrumentation(row, item);
       host.append(item);
     });

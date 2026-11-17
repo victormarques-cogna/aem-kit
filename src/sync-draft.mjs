@@ -2,6 +2,7 @@ import {
   access, mkdir, readFile, writeFile,
 } from 'node:fs/promises';
 import path from 'node:path';
+import { escapeAttr, parseOptions } from './fields.mjs';
 
 /**
  * @param {string} source
@@ -18,11 +19,15 @@ function parseAttrs(source) {
 
 /**
  * @param {string} html
- * @returns {{ blockInners: string[], itemInners: string[] }}
+ * Draft cell content of every data-field, in document order, as AEM delivers it.
+ * @param {string} html
+ * @returns {{ blockInners: string[], itemInners: string[], itemVariants: string[][] }}
+ *   itemVariants: one list of item inners per option of the item's first select (Drafts show each)
  */
 export function extractDataFieldInners(html) {
   const blockInners = [];
   const itemInners = [];
+  let itemSelect = null;
   const stack = [];
   let itemDepth = 0;
   const openRe = /<!--[\s\S]*?-->|<\/([a-zA-Z0-9-]+)\s*>|<([a-zA-Z0-9-]+)([^>]*?)(\/?)>/gi;
@@ -44,7 +49,17 @@ export function extractDataFieldInners(html) {
       if (match[4] === '/') stack.pop();
       if (attrs['data-item'] && !itemDepth) itemDepth = stack.length;
 
-      if (attrs['data-field']) {
+      const component = attrs['data-component'] || 'text';
+      if (attrs['data-field'] && component === 'select') {
+        // A select only sets an attribute: its content holds other fields, so keep parsing inside it.
+        const insideItem = itemDepth && stack.length >= itemDepth;
+        const options = parseOptions(attrs['data-options']);
+        const value = options[0]?.value ?? '';
+        if (insideItem) {
+          if (!itemSelect) itemSelect = { index: itemInners.length, options };
+          itemInners.push(value);
+        } else blockInners.push(value);
+      } else if (attrs['data-field']) {
         const insideItem = itemDepth && stack.length >= itemDepth;
         let inner = '';
         if (match[4] !== '/') {
@@ -65,8 +80,10 @@ export function extractDataFieldInners(html) {
             tagMatch = tagRe.exec(html);
           }
         }
-        // Multi-value fields are delivered by AEM as a list, one <li> per value.
-        const value = 'data-multi' in attrs ? `<ul><li>${inner}</li></ul>` : inner;
+        // Multi-value fields are delivered by AEM as a list, one <li> per value; links as one <a>.
+        let value = inner;
+        if ('data-multi' in attrs) value = `<ul><li>${inner}</li></ul>`;
+        if (component === 'link') value = `<p><a href="${escapeAttr(attrs.href || '#')}">${inner}</a></p>`;
         if (insideItem) itemInners.push(value);
         else blockInners.push(value);
       }
@@ -74,16 +91,20 @@ export function extractDataFieldInners(html) {
     }
   }
 
-  return { blockInners, itemInners };
+  const itemVariants = itemSelect && itemSelect.options.length > 1
+    ? itemSelect.options.map(({ value }) => itemInners.map((inner, i) => (i === itemSelect.index ? value : inner)))
+    : [itemInners];
+  return { blockInners, itemInners, itemVariants };
 }
 
 /**
  * @param {string} blockId
  * @param {string[]} blockInners
  * @param {string[]} itemInners
+ * @param {string[][]} [itemVariants] Item rows to render (one per select option)
  * @returns {string}
  */
-function authoredBlock(blockId, blockInners, itemInners) {
+function authoredBlock(blockId, blockInners, itemInners, itemVariants = [itemInners]) {
   const rows = [];
 
   if (itemInners.length) {
@@ -92,10 +113,12 @@ function authoredBlock(blockId, blockInners, itemInners) {
             <div>${inner}</div>
           </div>`);
     });
-    const itemCells = itemInners.map((inner) => `            <div>${inner}</div>`).join('\n');
-    rows.push(`          <div>
+    itemVariants.forEach((variant) => {
+      const itemCells = variant.map((inner) => `            <div>${inner}</div>`).join('\n');
+      rows.push(`          <div>
 ${itemCells}
           </div>`);
+    });
   } else {
     const cells = blockInners.map((inner) => `            <div>${inner}</div>`).join('\n');
     rows.push(`          <div>
@@ -141,9 +164,10 @@ function replaceAuthoredBlock(html, blockId, replacement) {
  * @param {string[]} blockInners
  * @param {string[]} itemInners
  * @param {object} strings i18n strings (lang, draftDescription)
+ * @param {string[][]} [itemVariants]
  * @returns {string}
  */
-function fullDraftPage(blockId, title, blockInners, itemInners, strings) {
+function fullDraftPage(blockId, title, blockInners, itemInners, strings, itemVariants) {
   return `<!DOCTYPE html>
 <html lang="${strings.lang}">
   <head>
@@ -160,7 +184,7 @@ function fullDraftPage(blockId, title, blockInners, itemInners, strings) {
     <main>
       <div>
         <h1>${title}</h1>
-${authoredBlock(blockId, blockInners, itemInners)}
+${authoredBlock(blockId, blockInners, itemInners, itemVariants)}
       </div>
     </main>
     <footer></footer>
@@ -183,7 +207,7 @@ export default async function syncDraft({
 }) {
   const draftsDir = path.join(root, 'drafts');
   const draftPath = path.join(draftsDir, `${blockId}.html`);
-  const { blockInners, itemInners } = extractDataFieldInners(html);
+  const { blockInners, itemInners, itemVariants } = extractDataFieldInners(html);
   if (!blockInners.length && !itemInners.length) return;
 
   await mkdir(draftsDir, { recursive: true });
@@ -195,17 +219,17 @@ export default async function syncDraft({
     exists = false;
   }
 
-  const blockMarkup = authoredBlock(blockId, blockInners, itemInners);
+  const blockMarkup = authoredBlock(blockId, blockInners, itemInners, itemVariants);
 
   if (!exists) {
-    await writeFile(draftPath, fullDraftPage(blockId, title, blockInners, itemInners, strings));
+    await writeFile(draftPath, fullDraftPage(blockId, title, blockInners, itemInners, strings, itemVariants));
     console.log(`draft: created drafts/${blockId}.html`);
     return;
   }
 
   const current = await readFile(draftPath, 'utf8');
   const replaced = replaceAuthoredBlock(current, blockId, blockMarkup);
-  const next = replaced ?? fullDraftPage(blockId, title, blockInners, itemInners, strings);
+  const next = replaced ?? fullDraftPage(blockId, title, blockInners, itemInners, strings, itemVariants);
   if (next !== current) {
     await writeFile(draftPath, next);
     console.log(`draft: synced drafts/${blockId}.html`);
