@@ -383,6 +383,37 @@ function tailwindCli(root) {
  * @param {string} blockId
  * @returns {Promise<void>}
  */
+/**
+ * Scopes the compiled utilities to the block: every block ships its own copy of shared
+ * utilities (e.g. `.flex-col`), so without a scope a later block stylesheet would beat a
+ * responsive variant of an earlier one on the same page (same layer and specificity,
+ * later source order wins). `@scope` keeps each block's rules inside it (scope root: the
+ * block's parent, so the block element itself matches), adds no
+ * specificity and lets the nearest block win for nested blocks.
+ * @param {string} css Minified Tailwind output
+ * @param {string} blockId
+ * @returns {string}
+ */
+export function scopeUtilities(css, blockId) {
+  const marker = '@layer utilities{';
+  const start = css.indexOf(marker);
+  if (start < 0) return css;
+  let depth = 0;
+  for (let i = start + marker.length - 1; i < css.length; i += 1) {
+    if (css[i] === '{') depth += 1;
+    else if (css[i] === '}') {
+      depth -= 1;
+      if (depth === 0) {
+        const inner = css.slice(start + marker.length, i);
+        // The scope root is the block's parent so the block element itself (which gets the
+        // Block Source root classes) is in scope; it also holds when enhance.js moves a block.
+        return `${css.slice(0, start)}${marker}@scope (:has(> .${blockId})){${inner}}}${css.slice(i + 1)}`;
+      }
+    }
+  }
+  return css;
+}
+
 async function compileCss(root, config, blockId) {
   const cli = tailwindCli(root);
   const dir = path.join(root, 'blocks', blockId);
@@ -398,7 +429,7 @@ ${themeBlock(config)}${utilityOverrides()}@source "./${blockId}.html";
   } finally {
     await rm(input, { force: true });
   }
-  const css = await readFile(output, 'utf8');
+  const css = scopeUtilities(await readFile(output, 'utf8'), blockId);
   await writeFile(output, `/* ${GENERATED_HEADER} blocks/${blockId}/${blockId}.html. Do not edit. */\n/* stylelint-disable */\n${css}`);
 }
 

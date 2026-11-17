@@ -67,6 +67,7 @@ New blocks are **HTML-first**. You edit only the Block Source `blocks/{name}/{na
 - Font: {{FONT_FAMILY}} is the main font (`--font-family`, used by `--body-font-family` and `--heading-font-family`; `font-sans` in Tailwind), with a metric-matched fallback in the aem-kit region of `styles/styles.css`. `styles/fonts.css` loads it after LCP. Both come from `font` in `aem-kit.config.json`
 - Formatting: Prettier (+ `prettier-plugin-tailwindcss` class sorting) only covers Block Sources (`blocks/{name}/{name}.html`) and `styles/*.css` (see `.prettierignore`). JS is formatted by ESLint (`npm run lint:fix`) because Prettier conflicts with it
 - `styles/tailwind.css` only feeds Tailwind IntelliSense in the editor; pages never load it
+- Each block's compiled CSS is wrapped in `@scope (:has(> .{name}))` (the block and everything inside it): its utilities only apply inside that block, so several blocks on one page never override each other's classes (e.g. one block's `flex-col` beating another's `xl:flex-row`). Elements you create in `enhance.js` must live inside the block to get its classes
 - See `CONTEXT.md` and `docs/adr/0001-html-first-blocks-tailwind.md`
 
 ### Design tokens
