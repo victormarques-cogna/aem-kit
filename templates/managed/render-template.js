@@ -119,6 +119,83 @@ function fieldSlots(scope, item) {
 }
 
 /**
+ * Splits a composite multi-field cell into entries: <ul><li> (one element per entry)
+ * or a flat list where every entry is preceded by <hr>.
+ * @param {Element} [cell]
+ * @returns {Element[][]} Elements of each entry
+ */
+function compositeEntries(cell) {
+  if (!cell) return [];
+  const list = cell.querySelector(':scope > ul');
+  if (list && !cell.querySelector(':scope > hr')) return [...list.children].map((li) => [li]);
+  const entries = [];
+  let current = null;
+  [...cell.children].forEach((el) => {
+    if (el.tagName === 'HR') {
+      current = [];
+      entries.push(current);
+    } else {
+      if (!current) {
+        current = [];
+        entries.push(current);
+      }
+      current.push(el);
+    }
+  });
+  return entries.filter((entry) => entry.some((el) => el.textContent.trim() || el.querySelector('img, picture, a')));
+}
+
+/**
+ * Fills one entry: pictures go to reference fields, links to link fields and the
+ * remaining text blocks to text/richtext/select fields, each in document order.
+ * A select only takes a text that is one of its options (else its default).
+ * @param {Element[]} slots Sub-field slots of the cloned item
+ * @param {Element[]} elements Elements of the entry
+ */
+function fillEntry(slots, elements) {
+  const pictures = elements.filter((el) => el.querySelector('picture, img') || el.matches('picture, img'));
+  const links = elements.filter((el) => !pictures.includes(el) && (el.matches('a') || el.querySelector('a')));
+  const texts = elements.filter((el) => !pictures.includes(el) && !links.includes(el));
+
+  slots.forEach((slot) => {
+    const kind = slot.getAttribute('data-component') || 'text';
+    if (kind === 'select') {
+      const values = (slot.getAttribute('data-options') || '').split(',').map((entry) => entry.split(':')[0].trim());
+      const candidate = texts[0]?.textContent.trim();
+      fillSelect(slot, values.includes(candidate) ? texts.shift() : null);
+    } else if (kind === 'reference') {
+      const picture = pictures.shift();
+      if (picture) slot.replaceChildren(...(picture.matches('picture, img') ? [picture] : picture.childNodes));
+      else slot.replaceChildren();
+    } else if (kind === 'link') {
+      fillLink(slot, links.shift());
+    } else if (kind === 'richtext') {
+      const text = texts.shift();
+      slot.replaceChildren(...(text ? [text] : []));
+    } else {
+      slot.textContent = texts.shift()?.textContent.trim() ?? '';
+    }
+  });
+}
+
+/**
+ * Repeats the item template once per entry of a composite multi-field.
+ * @param {Element} itemTemplate Element with data-item + data-multi
+ * @param {Element} [cell]
+ */
+function fillComposite(itemTemplate, cell) {
+  const host = itemTemplate.parentElement;
+  itemTemplate.remove();
+  compositeEntries(cell).forEach((elements) => {
+    const item = itemTemplate.cloneNode(true);
+    const slots = [...item.querySelectorAll('[data-field]')];
+    if (item.hasAttribute('data-field')) slots.unshift(item);
+    fillEntry(slots, elements);
+    host.append(item);
+  });
+}
+
+/**
  * Paints an authored block with the HTML template produced by build-blocks.
  * @param {Element} block Block element
  * @param {string} template HTML source from blocks/{name}/{name}.html
@@ -128,7 +205,17 @@ export default function renderTemplate(block, template) {
   if (!root) return;
 
   const itemTemplate = root.querySelector('[data-item]');
-  if (itemTemplate) {
+  if (itemTemplate?.hasAttribute('data-multi')) {
+    // Composite multi-field: one cell (row) per block field, the item list being one of them.
+    const cells = [...block.children].flatMap((row) => [...row.children]);
+    const slots = [...root.querySelectorAll('[data-field], [data-item]')]
+      .filter((slot) => slot === itemTemplate || !itemTemplate.contains(slot));
+    slots.forEach((slot, index) => {
+      if (slot === itemTemplate) fillComposite(slot, cells[index]);
+      else fillSlots([slot], [cells[index]]);
+    });
+    if (block.firstElementChild) moveInstrumentation(block.firstElementChild, root);
+  } else if (itemTemplate) {
     const blockSlots = fieldSlots(root, itemTemplate);
     const rows = [...block.children];
     const blockRows = rows.slice(0, blockSlots.length);

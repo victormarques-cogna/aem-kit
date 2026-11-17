@@ -39,6 +39,7 @@ function readTemplate(html) {
   let block = null;
   let item = null;
   let itemDepth = 0;
+  let itemAt = 0;
   /** @type {Record<string, string>[]} */
   const blockFields = [];
   /** @type {Record<string, string>[]} */
@@ -61,10 +62,15 @@ function readTemplate(html) {
     if (attrs['data-item'] && !item) {
       item = attrs;
       itemDepth = stack.length;
+      itemAt = blockFields.length;
     }
     if (!attrs['data-field']) return;
     const insideItem = item && itemDepth && stack.length >= itemDepth;
-    if (insideItem) itemFields.push(attrs);
+    // data-multi on the item element marks the composite list, not a multi-value sub-field.
+    if (insideItem && attrs === item) {
+      const { 'data-multi': ignored, ...field } = attrs;
+      itemFields.push(field);
+    } else if (insideItem) itemFields.push(attrs);
     else if (!item || !itemDepth) blockFields.push(attrs);
   });
 
@@ -72,6 +78,8 @@ function readTemplate(html) {
   return {
     block,
     item,
+    itemAt,
+    multi: Boolean(item && 'data-multi' in item),
     blockFields,
     itemFields,
     fields: [...blockFields, ...itemFields],
@@ -205,7 +213,7 @@ function componentPartial(blockId, model, file, html) {
     throw new Error(`${file}: data-title "${title}" gera a classe "${toClassName(title)}", diferente da pasta "${blockId}".`);
   }
   if (model.itemFields.some((field) => 'data-multi' in field)) {
-    throw new Error(`${file}: data-multi não é suportado dentro de data-item; use um campo do bloco.`);
+    throw new Error(`${file}: data-multi só vale num campo do bloco ou no próprio elemento data-item.`);
   }
   const blockFields = uniqueFieldModels(model.blockFields, file);
   const itemFields = uniqueFieldModels(model.itemFields, file);
@@ -216,6 +224,46 @@ function componentPartial(blockId, model, file, html) {
   const { blockInners, itemInners } = extractDataFieldInners(html);
   const blockValues = fieldDefaults(model.blockFields, blockInners);
   const itemValues = fieldDefaults(model.itemFields, itemInners);
+
+  if (model.multi) {
+    // Composite multi-field: the item becomes a repeatable group of fields in the block's
+    // own properties panel (no child items, no filter), placed where the item sits.
+    const itemId = model.item['data-item'];
+    if (!itemId) throw new Error(`${file}: data-item sem id.`);
+    if (!itemFields.length) throw new Error(`${file}: data-item precisa de ao menos um data-field.`);
+    const before = model.blockFields.slice(0, model.itemAt).flatMap((field) => fieldModel(field, file)).length;
+    const container = {
+      component: 'container',
+      name: itemId,
+      label: model.item['data-item-title'] || itemId,
+      multi: true,
+      fields: itemFields,
+    };
+    const fields = [...blockFields.slice(0, before), container, ...blockFields.slice(before)];
+    const names = new Set(blockFields.map((field) => field.name));
+    itemFields.forEach((field) => {
+      if (names.has(field.name) || field.name === itemId) throw new Error(`${file}: campo "${field.name}" repetido.`);
+    });
+    if (names.has(itemId)) throw new Error(`${file}: campo "${itemId}" repetido.`);
+    return {
+      definitions: [
+        {
+          title,
+          id: blockId,
+          plugins: {
+            xwalk: {
+              page: {
+                resourceType: BLOCK_RESOURCE,
+                template: { name: title, model: blockId, ...blockValues },
+              },
+            },
+          },
+        },
+      ],
+      models: [{ id: blockId, fields }],
+      filters: [],
+    };
+  }
 
   if (!model.item) {
     return {

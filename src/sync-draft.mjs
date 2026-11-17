@@ -21,13 +21,15 @@ function parseAttrs(source) {
  * @param {string} html
  * Draft cell content of every data-field, in document order, as AEM delivers it.
  * @param {string} html
- * @returns {{ blockInners: string[], itemInners: string[], itemVariants: string[][] }}
+ * @returns {{ blockInners: string[], itemInners: string[], itemVariants: string[][], multiAt: number }}
  *   itemVariants: one list of item inners per option of the item's first select (Drafts show each)
+ *   multiAt: position of a composite multi-field (data-item + data-multi) among the block fields, or -1
  */
 export function extractDataFieldInners(html) {
   const blockInners = [];
   const itemInners = [];
   let itemSelect = null;
+  let multiAt = -1;
   const stack = [];
   let itemDepth = 0;
   const openRe = /<!--[\s\S]*?-->|<\/([a-zA-Z0-9-]+)\s*>|<([a-zA-Z0-9-]+)([^>]*?)(\/?)>/gi;
@@ -47,7 +49,10 @@ export function extractDataFieldInners(html) {
       const attrs = parseAttrs(match[3] || '');
       stack.push(tag.toLowerCase());
       if (match[4] === '/') stack.pop();
-      if (attrs['data-item'] && !itemDepth) itemDepth = stack.length;
+      if (attrs['data-item'] && !itemDepth) {
+        itemDepth = stack.length;
+        if ('data-multi' in attrs) multiAt = blockInners.length;
+      }
 
       const component = attrs['data-component'] || 'text';
       if (attrs['data-field'] && component === 'select') {
@@ -82,7 +87,7 @@ export function extractDataFieldInners(html) {
         }
         // Multi-value fields are delivered by AEM as a list, one <li> per value; links as one <a>.
         let value = inner;
-        if ('data-multi' in attrs) value = `<ul><li>${inner}</li></ul>`;
+        if ('data-multi' in attrs && !attrs['data-item']) value = `<ul><li>${inner}</li></ul>`;
         if (component === 'link') value = `<p><a href="${escapeAttr(attrs.href || '#')}">${inner}</a></p>`;
         if (insideItem) itemInners.push(value);
         else blockInners.push(value);
@@ -94,7 +99,23 @@ export function extractDataFieldInners(html) {
   const itemVariants = itemSelect && itemSelect.options.length > 1
     ? itemSelect.options.map(({ value }) => itemInners.map((inner, i) => (i === itemSelect.index ? value : inner)))
     : [itemInners];
-  return { blockInners, itemInners, itemVariants };
+  return {
+    blockInners, itemInners, itemVariants, multiAt,
+  };
+}
+
+/**
+ * Composite multi-field cell as AEM delivers it: one <li> per entry when an entry is a
+ * single element, otherwise entries separated by <hr> with one paragraph per field.
+ * @param {string[][]} entries
+ * @returns {string}
+ */
+function compositeCell(entries) {
+  const wrap = (inner) => (/^<(p|ul|ol|h[1-6]|pre)\b/i.test(inner) ? inner : `<p>${inner}</p>`);
+  if (entries.every((entry) => entry.length === 1)) {
+    return `<ul>${entries.map(([inner]) => `<li>${inner}</li>`).join('')}</ul>`;
+  }
+  return `<hr>${entries.map((entry) => `${entry.filter(Boolean).map(wrap).join('')}<hr>`).join('')}`;
 }
 
 /**
@@ -102,12 +123,21 @@ export function extractDataFieldInners(html) {
  * @param {string[]} blockInners
  * @param {string[]} itemInners
  * @param {string[][]} [itemVariants] Item rows to render (one per select option)
+ * @param {number} [multiAt] Position of a composite multi-field among the block fields
  * @returns {string}
  */
-function authoredBlock(blockId, blockInners, itemInners, itemVariants = [itemInners]) {
+function authoredBlock(blockId, blockInners, itemInners, itemVariants = [itemInners], multiAt = -1) {
   const rows = [];
 
-  if (itemInners.length) {
+  if (multiAt >= 0) {
+    const cells = [...blockInners];
+    cells.splice(multiAt, 0, compositeCell(itemVariants));
+    cells.forEach((inner) => {
+      rows.push(`          <div>
+            <div>${inner}</div>
+          </div>`);
+    });
+  } else if (itemInners.length) {
     blockInners.forEach((inner) => {
       rows.push(`          <div>
             <div>${inner}</div>
@@ -165,9 +195,10 @@ function replaceAuthoredBlock(html, blockId, replacement) {
  * @param {string[]} itemInners
  * @param {object} strings i18n strings (lang, draftDescription)
  * @param {string[][]} [itemVariants]
+ * @param {number} [multiAt]
  * @returns {string}
  */
-function fullDraftPage(blockId, title, blockInners, itemInners, strings, itemVariants) {
+function fullDraftPage(blockId, title, blockInners, itemInners, strings, itemVariants, multiAt) {
   return `<!DOCTYPE html>
 <html lang="${strings.lang}">
   <head>
@@ -184,7 +215,7 @@ function fullDraftPage(blockId, title, blockInners, itemInners, strings, itemVar
     <main>
       <div>
         <h1>${title}</h1>
-${authoredBlock(blockId, blockInners, itemInners, itemVariants)}
+${authoredBlock(blockId, blockInners, itemInners, itemVariants, multiAt)}
       </div>
     </main>
     <footer></footer>
@@ -207,7 +238,9 @@ export default async function syncDraft({
 }) {
   const draftsDir = path.join(root, 'drafts');
   const draftPath = path.join(draftsDir, `${blockId}.html`);
-  const { blockInners, itemInners, itemVariants } = extractDataFieldInners(html);
+  const {
+    blockInners, itemInners, itemVariants, multiAt,
+  } = extractDataFieldInners(html);
   if (!blockInners.length && !itemInners.length) return;
 
   await mkdir(draftsDir, { recursive: true });
@@ -219,17 +252,17 @@ export default async function syncDraft({
     exists = false;
   }
 
-  const blockMarkup = authoredBlock(blockId, blockInners, itemInners, itemVariants);
+  const blockMarkup = authoredBlock(blockId, blockInners, itemInners, itemVariants, multiAt);
 
   if (!exists) {
-    await writeFile(draftPath, fullDraftPage(blockId, title, blockInners, itemInners, strings, itemVariants));
+    await writeFile(draftPath, fullDraftPage(blockId, title, blockInners, itemInners, strings, itemVariants, multiAt));
     console.log(`draft: created drafts/${blockId}.html`);
     return;
   }
 
   const current = await readFile(draftPath, 'utf8');
   const replaced = replaceAuthoredBlock(current, blockId, blockMarkup);
-  const next = replaced ?? fullDraftPage(blockId, title, blockInners, itemInners, strings, itemVariants);
+  const next = replaced ?? fullDraftPage(blockId, title, blockInners, itemInners, strings, itemVariants, multiAt);
   if (next !== current) {
     await writeFile(draftPath, next);
     console.log(`draft: synced drafts/${blockId}.html`);
