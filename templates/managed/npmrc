@@ -1,0 +1,3 @@
+# Managed by aem-kit. npm 12+ refuses git dependencies by default; aem-kit and
+# eslint-plugin-xwalk are installed from GitHub as direct dependencies.
+allow-git=root

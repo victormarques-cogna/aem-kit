@@ -33,6 +33,19 @@ export function themeBlock(config) {
 }
 
 /**
+ * Tailwind utility overrides compiled into every block and styles/tailwind.css.
+ * `container` centers and adds horizontal padding by default.
+ * @returns {string}
+ */
+export function utilityOverrides() {
+  return `@utility container {
+  margin-inline: auto;
+  padding-inline: --spacing(6);
+}
+`;
+}
+
+/**
  * Declarations for the managed region inside :root in styles/styles.css.
  * @param {object} config
  * @returns {string}

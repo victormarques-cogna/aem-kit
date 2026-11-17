@@ -7,7 +7,7 @@ import { buildBlocks } from './build.mjs';
 import { CONFIG_FILE, STARTER_CONFIG, loadConfig } from './config.mjs';
 import { KIT_ROOT, kitPackage, run } from './project.mjs';
 import {
-  fontFallbackFace, fontNames, fontVars, themeBlock,
+  fontFallbackFace, fontNames, fontVars, themeBlock, utilityOverrides,
 } from './theme.mjs';
 
 const T = (file) => path.join(KIT_ROOT, 'templates', file);
@@ -24,6 +24,8 @@ const LEGACY_FILES = [
   'tools/lib/names.mjs',
   'tools/lib/source-gate.mjs',
   'tools/lib/sync-draft.mjs',
+  // npm is the package manager; npm also reads a yarn.lock and fails `npm ci` when they disagree.
+  'yarn.lock',
 ];
 const LEGACY_SCRIPTS = ['build:blocks', 'aem:up:server'];
 // ESLint override that the pre-package toolchain added for its tools/ scripts.
@@ -205,6 +207,7 @@ export default async function init(root, opts = {}) {
   await write('.stylelintrc.json', template('managed/stylelintrc.json'));
   await write('.htmlvalidate.json', template('managed/htmlvalidate.json'));
   await write('.editorconfig', template('managed/editorconfig'));
+  await write('.npmrc', template('managed/npmrc'));
   await write('.vscode/settings.json', template('managed/vscode-settings.json'));
   await write('.vscode/extensions.json', template('managed/vscode-extensions.json'));
   await write('.husky/pre-commit', template('managed/husky-pre-commit'));
@@ -232,6 +235,8 @@ ${fill(template('managed/criar-bloco.md'), { ARGS: '$ARGUMENTS' })}`);
     header(intellisenseNote),
     "@import 'tailwindcss';\n\n",
     themeBlock(config),
+    '\n',
+    utilityOverrides(),
     "\n@source '../blocks/**/*.html';\n@source '../drafts/**/*.html';\n",
   ].join(''));
 
