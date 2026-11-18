@@ -27,7 +27,9 @@ function parseAttrs(source) {
  */
 export function extractDataFieldInners(html) {
   const blockInners = [];
-  const itemInners = [];
+  /** @type {string[][]} */
+  const itemEntries = [];
+  let currentEntry = null;
   let itemSelect = null;
   let multiAt = -1;
   const stack = [];
@@ -42,7 +44,10 @@ export function extractDataFieldInners(html) {
     } else if (match[1]) {
       const index = stack.lastIndexOf(match[1].toLowerCase());
       if (index >= 0) stack.splice(index);
-      if (itemDepth && stack.length < itemDepth) itemDepth = 0;
+      if (itemDepth && stack.length < itemDepth) {
+        itemDepth = 0;
+        currentEntry = null;
+      }
       match = openRe.exec(html);
     } else {
       const tag = match[2];
@@ -51,7 +56,9 @@ export function extractDataFieldInners(html) {
       if (match[4] === '/') stack.pop();
       if (attrs['data-item'] && !itemDepth) {
         itemDepth = stack.length;
-        if ('data-multi' in attrs) multiAt = blockInners.length;
+        currentEntry = [];
+        itemEntries.push(currentEntry);
+        if ('data-multi' in attrs && multiAt < 0) multiAt = blockInners.length;
       }
 
       const component = attrs['data-component'] || 'text';
@@ -60,9 +67,9 @@ export function extractDataFieldInners(html) {
         const insideItem = itemDepth && stack.length >= itemDepth;
         const options = parseOptions(attrs['data-options']);
         const value = options[0]?.value ?? '';
-        if (insideItem) {
-          if (!itemSelect) itemSelect = { index: itemInners.length, options };
-          itemInners.push(value);
+        if (insideItem && currentEntry) {
+          if (!itemSelect) itemSelect = { index: currentEntry.length, options };
+          currentEntry.push(value);
         } else blockInners.push(value);
       } else if (attrs['data-field']) {
         const insideItem = itemDepth && stack.length >= itemDepth;
@@ -89,16 +96,17 @@ export function extractDataFieldInners(html) {
         let value = inner;
         if ('data-multi' in attrs && !attrs['data-item']) value = `<ul><li>${inner}</li></ul>`;
         if (component === 'link') value = `<p><a href="${escapeAttr(attrs.href || '#')}">${inner}</a></p>`;
-        if (insideItem) itemInners.push(value);
+        if (insideItem && currentEntry) currentEntry.push(value);
         else blockInners.push(value);
       }
       match = openRe.exec(html);
     }
   }
 
+  const itemInners = itemEntries[0] || [];
   const itemVariants = itemSelect && itemSelect.options.length > 1
     ? itemSelect.options.map(({ value }) => itemInners.map((inner, i) => (i === itemSelect.index ? value : inner)))
-    : [itemInners];
+    : (itemEntries.length ? itemEntries : [itemInners]);
   return {
     blockInners, itemInners, itemVariants, multiAt,
   };

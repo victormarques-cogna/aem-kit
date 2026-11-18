@@ -179,15 +179,28 @@ function fillEntry(slots, elements) {
 }
 
 /**
+ * Removes every data-item under host and returns a clone of the first as template.
+ * Extra data-item siblings in the Block Source are Draft samples only.
+ * @param {Element} host
+ * @param {Element} itemTemplate
+ * @returns {Element}
+ */
+function takeItemTemplate(host, itemTemplate) {
+  const template = itemTemplate.cloneNode(true);
+  [...host.querySelectorAll(':scope > [data-item]')].forEach((el) => el.remove());
+  return template;
+}
+
+/**
  * Repeats the item template once per entry of a composite multi-field.
  * @param {Element} itemTemplate Element with data-item + data-multi
  * @param {Element} [cell]
  */
 function fillComposite(itemTemplate, cell) {
   const host = itemTemplate.parentElement;
-  itemTemplate.remove();
+  const template = takeItemTemplate(host, itemTemplate);
   compositeEntries(cell).forEach((elements) => {
-    const item = itemTemplate.cloneNode(true);
+    const item = template.cloneNode(true);
     const slots = [...item.querySelectorAll('[data-field]')];
     if (item.hasAttribute('data-field')) slots.unshift(item);
     fillEntry(slots, elements);
@@ -209,7 +222,10 @@ export default function renderTemplate(block, template) {
     // Composite multi-field: one cell (row) per block field, the item list being one of them.
     const cells = [...block.children].flatMap((row) => [...row.children]);
     const slots = [...root.querySelectorAll('[data-field], [data-item]')]
-      .filter((slot) => slot === itemTemplate || !itemTemplate.contains(slot));
+      .filter((slot) => {
+        if (slot.hasAttribute('data-item')) return slot === itemTemplate;
+        return !slot.closest('[data-item]');
+      });
     slots.forEach((slot, index) => {
       if (slot === itemTemplate) fillComposite(slot, cells[index]);
       else fillSlots([slot], [cells[index]]);
@@ -227,11 +243,11 @@ export default function renderTemplate(block, template) {
     );
 
     const host = itemTemplate.parentElement;
-    itemTemplate.remove();
+    const templateEl = takeItemTemplate(host, itemTemplate);
     itemRows.forEach((row) => {
       const cells = [...row.children];
       if (!cells.some(cellHasContent)) return;
-      const item = itemTemplate.cloneNode(true);
+      const item = templateEl.cloneNode(true);
       // The item element itself may be a field (e.g. a select that colors the card).
       const slots = [...item.querySelectorAll('[data-field]')];
       if (item.hasAttribute('data-field')) slots.unshift(item);

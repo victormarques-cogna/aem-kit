@@ -40,6 +40,8 @@ function readTemplate(html) {
   let item = null;
   let itemDepth = 0;
   let itemAt = 0;
+  // Extra data-item siblings are Draft samples; only the first defines the model.
+  let collectingItemFields = false;
   /** @type {Record<string, string>[]} */
   const blockFields = [];
   /** @type {Record<string, string>[]} */
@@ -51,7 +53,10 @@ function readTemplate(html) {
     if (match[1]) {
       const index = stack.lastIndexOf(match[1]);
       if (index >= 0) stack.splice(index);
-      if (item && stack.length < itemDepth) itemDepth = 0;
+      if (itemDepth && stack.length < itemDepth) {
+        itemDepth = 0;
+        collectingItemFields = false;
+      }
       return;
     }
 
@@ -59,19 +64,28 @@ function readTemplate(html) {
     stack.push(match[2]);
     if (match[4] === '/') stack.pop();
     if (attrs['data-block']) block = attrs;
-    if (attrs['data-item'] && !item) {
-      item = attrs;
-      itemDepth = stack.length;
-      itemAt = blockFields.length;
+    if (attrs['data-item']) {
+      if (!item) {
+        item = attrs;
+        itemDepth = stack.length;
+        itemAt = blockFields.length;
+        collectingItemFields = true;
+      } else if (!itemDepth) {
+        itemDepth = stack.length;
+        collectingItemFields = false;
+      }
     }
     if (!attrs['data-field']) return;
     const insideItem = item && itemDepth && stack.length >= itemDepth;
-    // data-multi on the item element marks the composite list, not a multi-value sub-field.
-    if (insideItem && attrs === item) {
-      const { 'data-multi': ignored, ...field } = attrs;
-      itemFields.push(field);
-    } else if (insideItem) itemFields.push(attrs);
-    else if (!item || !itemDepth) blockFields.push(attrs);
+    if (insideItem && collectingItemFields) {
+      // data-multi on the item element marks the composite list, not a multi-value sub-field.
+      if (attrs === item) {
+        const { 'data-multi': ignored, ...field } = attrs;
+        itemFields.push(field);
+      } else itemFields.push(attrs);
+    } else if (!insideItem) {
+      blockFields.push(attrs);
+    }
   });
 
   if (!block?.['data-block']) throw new Error('O HTML precisa de um elemento com data-block.');
