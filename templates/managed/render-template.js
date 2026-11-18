@@ -157,7 +157,8 @@ function fillEntry(slots, elements) {
   const links = elements.filter((el) => !pictures.includes(el) && (el.matches('a') || el.querySelector('a')));
   const texts = elements.filter((el) => !pictures.includes(el) && !links.includes(el));
 
-  slots.forEach((slot) => {
+  const textKinds = ['text', 'richtext', 'select'];
+  slots.forEach((slot, index) => {
     const kind = slot.getAttribute('data-component') || 'text';
     if (kind === 'select') {
       const values = (slot.getAttribute('data-options') || '').split(',').map((entry) => entry.split(':')[0].trim());
@@ -170,8 +171,11 @@ function fillEntry(slots, elements) {
     } else if (kind === 'link') {
       fillLink(slot, links.shift());
     } else if (kind === 'richtext') {
-      const text = texts.shift();
-      slot.replaceChildren(...(text ? [text] : []));
+      // A richtext may span several blocks (<p>, <ul>...): it takes every text block
+      // except one for each text/richtext/select slot still to be filled after it.
+      const later = slots.slice(index + 1)
+        .filter((next) => textKinds.includes(next.getAttribute('data-component') || 'text')).length;
+      slot.replaceChildren(...texts.splice(0, Math.max(1, texts.length - later)));
     } else {
       slot.textContent = texts.shift()?.textContent.trim() ?? '';
     }
