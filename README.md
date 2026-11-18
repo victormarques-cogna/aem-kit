@@ -8,14 +8,14 @@ Configura um repositório AEM Edge Delivery (xwalk), recém-criado pelo Cloud Ma
 2. Rode o init uma vez sem config, para criar o `aem-kit.config.json` de exemplo:
 
    ```sh
-   npx github:victormarques-cogna/aem-kit#v0.5.3 init
+   npx github:victormarques-cogna/aem-kit#v0.5.4 init
    ```
 
 3. Preencha `aem-kit.config.json` (nome, descrição, idioma, fonte, cores, breakpoints opcionais). O editor valida pelo schema.
 4. Rode o init de novo. Ele instala as dependências, o Chromium do Playwright, os hooks e gera tudo:
 
    ```sh
-   npx github:victormarques-cogna/aem-kit#v0.5.3 init
+   npx github:victormarques-cogna/aem-kit#v0.5.4 init
    ```
 
 5. Revise com `git diff` e commite.

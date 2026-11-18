@@ -84,7 +84,8 @@ export function extractDataFieldInners(html) {
             if (tagMatch[0].startsWith('</')) depth -= 1;
             else if (!/\/\s*>$/.test(tagMatch[0])) depth += 1;
             if (depth === 0) {
-              inner = html.slice(start, tagMatch.index).trim();
+              // HTML comments (e.g. commented-out sample copy) are never default content.
+              inner = html.slice(start, tagMatch.index).replace(/<!--[\s\S]*?-->/g, '').trim();
               openRe.lastIndex = tagMatch.index + tagMatch[0].length;
               stack.pop();
               break;
