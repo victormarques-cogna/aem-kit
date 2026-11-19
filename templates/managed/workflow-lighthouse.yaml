@@ -1,6 +1,8 @@
 # Managed by aem-kit. Post-deploy Lighthouse: waits for AEM Code Sync to publish the pushed
 # code, then measures the real pages (CDN, author-optimized images, authored content) on
 # https://{branch}--{repo}--{owner}.aem.live (main) or .aem.page. Pages: `lighthouse.urls`.
+# With `tracking` (GTM) configured, the gate measures the pages without GTM (the site's own code)
+# and a second, report-only run shows the score with the GTM tags (job summary, never fails).
 name: aem-kit lighthouse
 on:
   push:
@@ -20,4 +22,4 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx playwright install --with-deps chromium
-      - run: npm run aem:lighthouse -- --deployed --wait-sync
+{{STEPS}}

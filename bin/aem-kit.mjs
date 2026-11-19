@@ -22,6 +22,9 @@ Uso: aem-kit <comando> [opções]
   check [--staged]            build + ESLint + Stylelint + Prettier + html-validate + axe + Lighthouse
                               (--staged: só o que está no commit, usado no pre-commit)
   lighthouse [nome...] [--url <url>] [--deployed [--wait-sync]] [--categories a,b] [--runs n]
+             [--block <padrão de URL>...] [--report] [--title <texto>]
+                              --block '*googletagmanager.com*' mede sem o GTM; --report só mede
+                              e mostra (nunca reprova); --title nomeia o resumo do GitHub Actions
                               Lighthouse (mínimo em aem-kit.config.json, padrão 90) nos Drafts
                               ou em URLs; --deployed usa {branch}--{repo}--{owner}.aem.live/page
 `;
@@ -64,7 +67,7 @@ try {
     case 'lighthouse': {
       const { root: dir, config } = ctx();
       const values = (name) => args.flatMap((arg, i) => (args[i - 1] === name ? [arg] : []));
-      const optionNames = ['--url', '--categories', '--runs'];
+      const optionNames = ['--url', '--categories', '--runs', '--block', '--title'];
       const blocks = args.filter((arg, i) => !arg.startsWith('--') && !optionNames.includes(args[i - 1]));
       const urls = values('--url');
       if (flag('--deployed')) {
@@ -76,8 +79,10 @@ try {
       const runs = option('--runs') ? Number(option('--runs')) : undefined;
       const all = !blocks.length && !urls.length;
       const targets = all ? await listHtmlFirstBlocks(dir) : blocks;
+      const blocked = values('--block');
+      if (blocked.length) console.log(`▸ Sem carregar: ${blocked.join(', ')}`);
       if (!(await checkLighthouse(dir, config, {
-        blocks: targets, urls, categories, runs,
+        blocks: targets, urls, categories, runs, blocked, report: flag('--report'), title: option('--title'),
       }))) process.exitCode = 1;
       break;
     }

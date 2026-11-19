@@ -1,4 +1,5 @@
 import { moveInstrumentation } from './scripts.js';
+import './datalayer.js';
 
 const AUTHORING_ATTRS = [
   'data-block',

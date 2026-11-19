@@ -53,6 +53,16 @@
       "propertyNames": { "pattern": "^[a-z0-9][a-z0-9-]*$" },
       "additionalProperties": { "type": "string", "pattern": "^\\d+(\\.\\d+)?(px|rem|em)$" }
     },
+    "tracking": {
+      "description": "Google Tag Manager + dataLayer (head.html e scripts/datalayer.js). O metadado de página gtm-id substitui gtmId; page-name substitui defaults.pageName.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "gtmId": { "type": "string", "pattern": "^GTM-[A-Z0-9]+$", "description": "Container padrão (o metadado gtm-id da página tem prioridade)." },
+        "defaults": { "type": "object", "additionalProperties": { "type": "string" }, "description": "Campos enviados em todo evento (ex.: marca, pageName)." },
+        "pageview": { "type": "boolean", "default": true, "description": "Envia o evento pageview (padrão Cogna WA) ao abrir a página." }
+      }
+    },
     "lighthouse": {
       "description": "Validação Lighthouse (aem-kit lighthouse, pre-commit e CI). false desliga.",
       "oneOf": [

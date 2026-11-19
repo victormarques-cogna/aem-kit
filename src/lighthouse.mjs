@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs';
-import { readFile } from 'node:fs/promises';
+import { appendFile, readFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { run } from './project.mjs';
@@ -86,7 +86,7 @@ function score(lhr, category) {
  * @param {object} lhr
  * @param {string} category
  */
-function printCulprits(lhr, category) {
+function printCulprits(lhr, category, log = console.error) {
   const refs = lhr.categories[category]?.auditRefs ?? [];
   refs
     .filter((ref) => ref.weight > 0)
@@ -96,10 +96,10 @@ function printCulprits(lhr, category) {
     .slice(0, 5)
     .forEach(({ audit }) => {
       const value = audit.displayValue ? ` (${audit.displayValue})` : '';
-      console.error(`    → ${audit.id}: ${audit.title}${value}`);
+      log(`    → ${audit.id}: ${audit.title}${value}`);
       (audit.details?.items ?? []).slice(0, 2).forEach((item) => {
         const where = item.node?.selector ?? item.node?.snippet ?? item.url ?? item.source?.url;
-        if (where) console.error(`        ${String(where).slice(0, 140)}`);
+        if (where) log(`        ${String(where).slice(0, 140)}`);
       });
     });
 }
@@ -112,10 +112,10 @@ function printCulprits(lhr, category) {
  * @returns {Promise<object>} lhr
  */
 async function runAudit(lighthouse, port, url, {
-  categories, formFactor, skipAudits, desktopConfig,
+  categories, formFactor, skipAudits, desktopConfig, blockedUrlPatterns,
 }) {
   const flags = {
-    port, output: 'json', logLevel: 'error', onlyCategories: categories, skipAudits,
+    port, output: 'json', logLevel: 'error', onlyCategories: categories, skipAudits, blockedUrlPatterns,
   };
   const result = await lighthouse(url, flags, formFactor === 'desktop' ? desktopConfig : undefined);
   if (!result?.lhr) throw new Error(`Lighthouse não retornou resultado para ${url}.`);
@@ -181,11 +181,17 @@ export async function deployedBase(root) {
  * `minScore`. When Performance fails the first run, it is the median of `runs` runs.
  * @param {string} root
  * @param {object} config aem-kit config
- * @param {{ blocks?: string[], urls?: string[], categories?: string[], runs?: number }} opts
+ * @param {{
+ *   blocks?: string[], urls?: string[], categories?: string[], runs?: number, blocked?: string[],
+ *   report?: boolean, title?: string,
+ * }} opts
+ *   blocked: URL patterns Chrome must not load (e.g. `*googletagmanager.com*`), to measure without them
+ *   report: only measure and print (never fails), e.g. the cost of third-party tags
+ *   title: heading of the GitHub Actions job summary (when $GITHUB_STEP_SUMMARY is set)
  * @returns {Promise<boolean>}
  */
 export default async function checkLighthouse(root, config, {
-  blocks = [], urls = [], categories = CATEGORIES, runs,
+  blocks = [], urls = [], categories = CATEGORIES, runs, blocked = [], report = false, title,
 } = {}) {
   const settings = lighthouseSettings(config);
   const maxRuns = runs ?? settings.runs;
@@ -210,12 +216,14 @@ export default async function checkLighthouse(root, config, {
    * @param {{ label: string, url: string, skip: string[] }} target
    * @returns {Promise<boolean>}
    */
+  const rows = [];
   const checkTarget = async (target) => {
     const opts = {
       categories,
       formFactor: settings.formFactor,
       skipAudits: [...settings.skipAudits, ...target.skip],
       desktopConfig: tools.desktopConfig,
+      blockedUrlPatterns: blocked,
     };
     const lhr = await runAudit(tools.lighthouse, chrome.port, target.url, opts);
     const perfRuns = [lhr];
@@ -239,8 +247,17 @@ export default async function checkLighthouse(root, config, {
     const failing = scores.filter(({ value }) => value < settings.minScore);
     const summary = scores.map(({ category, value }) => `${LABELS[category]} ${value}`).join(' · ');
     const runsNote = perfRuns.length > 1 ? ` (Performance: mediana de ${perfScores.join(', ')})` : '';
+    rows.push(`| ${target.label} | ${scores.map(({ value }) => (value < settings.minScore ? `**${value}**` : value)).join(' | ')} |`);
     if (!failing.length) {
       console.log(`✔ lighthouse ${target.label}: ${summary}${runsNote}`);
+      return true;
+    }
+    if (report) {
+      console.log(`ℹ lighthouse ${target.label}: ${summary}${runsNote} — abaixo de ${settings.minScore} (só informativo)`);
+      failing.forEach(({ category }) => {
+        console.log(`  ${LABELS[category]}:`);
+        printCulprits(category === 'performance' ? perfLhr : lhr, category, console.log);
+      });
       return true;
     }
     console.error(`✖ lighthouse ${target.label}: ${summary}${runsNote} — mínimo ${settings.minScore}`);
@@ -257,6 +274,21 @@ export default async function checkLighthouse(root, config, {
       (queue, target) => queue.then(async (done) => [...done, await checkTarget(target)]),
       Promise.resolve([]),
     );
+    if (process.env.GITHUB_STEP_SUMMARY && rows.length) {
+      const heading = title ?? (report ? 'Lighthouse (informativo)' : 'Lighthouse');
+      const without = blocked.length ? `\n\nSem carregar: ${blocked.map((pattern) => `\`${pattern}\``).join(', ')}` : '';
+      await appendFile(process.env.GITHUB_STEP_SUMMARY, [
+        `### ${heading}${without}`,
+        '',
+        `| Página | ${categories.map((category) => LABELS[category]).join(' | ')} |`,
+        `| --- |${categories.map(() => ' ---: |').join('')}`,
+        ...rows,
+        '',
+        `Mínimo: ${settings.minScore}${report ? ' (não reprova)' : ''}`,
+        '',
+        '',
+      ].join('\n'));
+    }
     return results.every(Boolean);
   } finally {
     await chrome.kill();

@@ -91,6 +91,19 @@ export function loadConfig(root) {
     }
   }
 
+  if (config.tracking !== undefined) {
+    const tr = config.tracking;
+    if (!isObject(tr)) errors.push('tracking deve ser um objeto.');
+    else {
+      if (tr.gtmId !== undefined && !/^GTM-[A-Z0-9]+$/.test(tr.gtmId)) {
+        errors.push('tracking.gtmId deve ser um ID de container do GTM (ex.: "GTM-ABC1234").');
+      }
+      if (tr.defaults !== undefined && !(isObject(tr.defaults) && Object.values(tr.defaults).every((v) => typeof v === 'string'))) {
+        errors.push('tracking.defaults deve ser um objeto { campo: "texto" }.');
+      }
+      if (tr.pageview !== undefined && typeof tr.pageview !== 'boolean') errors.push('tracking.pageview deve ser true ou false.');
+    }
+  }
   if (config.lighthouse !== undefined && config.lighthouse !== false) {
     const lh = config.lighthouse;
     if (!isObject(lh)) errors.push('lighthouse deve ser um objeto ou false.');
