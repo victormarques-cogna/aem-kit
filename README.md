@@ -30,9 +30,10 @@ O init exige working tree limpo (só o `aem-kit.config.json` pode estar pendente
 | `npm run aem:generate-block -- <nome>` | Cria Block Source + Draft e roda o Block Build |
 | `npm run aem:build [-- <nome>]` | Block Build (todos ou um bloco) + `build:json` |
 | `npm run aem:up` | Servidor AEM com `drafts/` + rebuild ao salvar |
-| `npm run check` | Build + ESLint + Stylelint + Prettier + html-validate + axe (o que o CI roda) |
+| `npm run check` | Build + ESLint + Stylelint + Prettier + html-validate + axe + Lighthouse (o que o CI roda) |
+| `npm run aem:lighthouse` | Lighthouse nos Drafts (`-- <bloco>`), numa URL (`-- --url <url>`) ou no site publicado da branch (`-- --deployed`); nota mínima em `lighthouse.minScore` (padrão 90) |
 
-O pre-commit roda `aem-kit check --staged`: Block Build só dos blocos alterados (e stage só dos artefatos gerados), lint e Prettier dos arquivos staged, semântica dos Block Sources e axe nos Drafts. Violações `serious`/`critical` bloqueiam o commit.
+O pre-commit roda `aem-kit check --staged`: Block Build só dos blocos alterados (e stage só dos artefatos gerados), lint e Prettier dos arquivos staged, semântica dos Block Sources, axe e Lighthouse (Acessibilidade, Boas práticas e SEO) nos Drafts. Violações `serious`/`critical` e notas abaixo do mínimo bloqueiam o commit. Performance é cobrada no CI e, após cada push na `main`, pelo workflow `aem-kit lighthouse` na URL real (depois do Code Sync).
 
 ## O que o init gerencia
 

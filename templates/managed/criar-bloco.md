@@ -16,6 +16,6 @@ Entrada: {{ARGS}}
    - HTML semântico: um heading, hierarquia correta, `alt` em imagens, botões de verdade para ações; `reference` sempre num container, nunca direto no `<img>`.
 5. **Comportamento** (acordeão, carrossel, abas…): crie `blocks/<nome>/<nome>.enhance.js` com `export default function enhance(block)`, usando atributos `data-*` próprios como gancho (veja `blocks/*/*.enhance.js` existentes). Sem dependências externas.
 6. **Nunca edite** `_<nome>.json`, `<nome>.js`, `<nome>.css` nem o bloco dentro de `drafts/<nome>.html`: rode `npm run aem:build -- <nome>`.
-7. **Valide:** `npm run check` deve passar (build, ESLint, Stylelint, Prettier, html-validate, axe). Corrija até passar; não use `--no-verify`.
+7. **Valide:** `npm run check` deve passar (build, ESLint, Stylelint, Prettier, html-validate, axe e Lighthouse). Rode também `npm run aem:lighthouse -- <nome>`: Performance, Acessibilidade, Boas práticas e SEO precisam de nota ≥ 90 (ou o `lighthouse.minScore` do projeto). Corrija a causa até passar (imagens do Draft em WebP e no tamanho de exibição, contraste, `alt`, nada de erro no console); nunca baixe o mínimo, ignore auditorias nem use `--no-verify`.
 8. **Mostre o resultado:** preview em `http://localhost:3000/drafts/<nome>` (`npm run aem:up`). Se puder abrir o navegador, compare com o design em mobile e desktop.
 9. Resuma para a pessoa: fields criados (como o autor vai ver no Universal Editor), tokens usados e qualquer valor solto que mereça virar token.

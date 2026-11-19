@@ -1,9 +1,10 @@
 #!/usr/bin/env node
-import { buildBlocks } from '../src/build.mjs';
+import { buildBlocks, listHtmlFirstBlocks } from '../src/build.mjs';
 import check from '../src/check.mjs';
 import { requireConfig } from '../src/config.mjs';
 import generateBlock from '../src/generate.mjs';
 import init from '../src/init.mjs';
+import checkLighthouse, { deployedBase, lighthouseSettings, waitForCodeSync } from '../src/lighthouse.mjs';
 import { findProjectRoot, kitPackage } from '../src/project.mjs';
 import up from '../src/up.mjs';
 import watch from '../src/watch.mjs';
@@ -18,8 +19,11 @@ Uso: aem-kit <comando> [opções]
   build [nome...]             Block Build (todos os blocos ou só os informados) + build:json
   watch                       rebuild ao salvar blocks/{nome}/{nome}.{html,enhance.js}
   up [args do aem up]         servidor AEM (drafts/) + watch
-  check [--staged]            build + ESLint + Stylelint + Prettier + html-validate + axe
+  check [--staged]            build + ESLint + Stylelint + Prettier + html-validate + axe + Lighthouse
                               (--staged: só o que está no commit, usado no pre-commit)
+  lighthouse [nome...] [--url <url>] [--deployed [--wait-sync]] [--categories a,b] [--runs n]
+                              Lighthouse (mínimo em aem-kit.config.json, padrão 90) nos Drafts
+                              ou em URLs; --deployed usa {branch}--{repo}--{owner}.aem.live/page
 `;
 
 const [command, ...args] = process.argv.slice(2);
@@ -57,6 +61,26 @@ try {
     case 'check':
       if (!(await check(ctx(), { staged: flag('--staged') }))) process.exitCode = 1;
       break;
+    case 'lighthouse': {
+      const { root: dir, config } = ctx();
+      const values = (name) => args.flatMap((arg, i) => (args[i - 1] === name ? [arg] : []));
+      const optionNames = ['--url', '--categories', '--runs'];
+      const blocks = args.filter((arg, i) => !arg.startsWith('--') && !optionNames.includes(args[i - 1]));
+      const urls = values('--url');
+      if (flag('--deployed')) {
+        const base = await deployedBase(dir);
+        if (flag('--wait-sync')) await waitForCodeSync(dir, base);
+        urls.push(...lighthouseSettings(config).urls.map((page) => new URL(page, base).href));
+      }
+      const categories = option('--categories')?.split(',');
+      const runs = option('--runs') ? Number(option('--runs')) : undefined;
+      const all = !blocks.length && !urls.length;
+      const targets = all ? await listHtmlFirstBlocks(dir) : blocks;
+      if (!(await checkLighthouse(dir, config, {
+        blocks: targets, urls, categories, runs,
+      }))) process.exitCode = 1;
+      break;
+    }
     case undefined:
     case '-h':
     case '--help':

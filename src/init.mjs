@@ -171,6 +171,7 @@ export default async function init(root, opts = {}) {
     'aem:watch': 'aem-kit watch',
     'aem:up': 'aem-kit up',
     check: 'aem-kit check',
+    'aem:lighthouse': 'aem-kit lighthouse',
     format: 'prettier --write .',
     'format:check': 'prettier --check .',
   });
@@ -223,6 +224,7 @@ export default async function init(root, opts = {}) {
   await write('.husky/pre-commit', template('managed/husky-pre-commit'));
   await write('.husky/pre-commit.mjs', template('managed/husky-pre-commit.mjs'));
   await write('.github/workflows/aem-kit-check.yaml', template('managed/workflow-check.yaml'));
+  await write('.github/workflows/aem-kit-lighthouse.yaml', template('managed/workflow-lighthouse.yaml'));
   await write('docs/adr/0001-html-first-blocks-tailwind.md', template('adr-0001.md'));
   await write('CLAUDE.md', template('managed/claude.md'));
   await write('.cursor/rules/aem-kit.mdc', template('managed/cursor-rule.mdc'));

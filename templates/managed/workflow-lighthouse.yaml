@@ -1,0 +1,23 @@
+# Managed by aem-kit. Post-deploy Lighthouse: waits for AEM Code Sync to publish the pushed
+# code, then measures the real pages (CDN, author-optimized images, authored content) on
+# https://{branch}--{repo}--{owner}.aem.live (main) or .aem.page. Pages: `lighthouse.urls`.
+name: aem-kit lighthouse
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  lighthouse:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 2
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run aem:lighthouse -- --deployed --wait-sync

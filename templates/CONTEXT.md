@@ -23,7 +23,7 @@ Arquivo criado pelo aem-kit uma única vez e depois do projeto: `styles/styles.c
 _Avoid_: Managed File
 
 **Check**:
-A validação `aem-kit check`: Block Build, ESLint, Stylelint, Prettier, semântica (Source Gate + html-validate) e acessibilidade (axe nos Drafts). Com `--staged` roda no pre-commit só sobre o que está no commit; sem flag roda no CI sobre o projeto todo.
+A validação `aem-kit check`: Block Build, ESLint, Stylelint, Prettier, semântica (Source Gate + html-validate), acessibilidade (axe nos Drafts) e Lighthouse nos Drafts (nota mínima por categoria; sem Performance no `--staged`). Com `--staged` roda no pre-commit só sobre o que está no commit; sem flag roda no CI sobre o projeto todo.
 _Avoid_: Lint só no CI, `--no-verify`
 
 **Block Source**:

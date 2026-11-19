@@ -105,9 +105,10 @@ export function extractDataFieldInners(html) {
   }
 
   const itemInners = itemEntries[0] || [];
+  const samples = itemEntries.length ? itemEntries : [itemInners];
   const itemVariants = itemSelect && itemSelect.options.length > 1
     ? itemSelect.options.map(({ value }) => itemInners.map((inner, i) => (i === itemSelect.index ? value : inner)))
-    : (itemEntries.length ? itemEntries : [itemInners]);
+    : samples;
   return {
     blockInners, itemInners, itemVariants, multiAt,
   };

@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import checkA11y from './a11y.mjs';
+import checkLighthouse, { CATEGORIES, STAGED_CATEGORIES } from './lighthouse.mjs';
 import {
   AGGREGATE_PATHS, buildBlocks, buildJson, generatedPaths, hasHtmlSource, listHtmlFirstBlocks,
 } from './build.mjs';
@@ -59,7 +60,8 @@ async function tool(root, bin, args) {
 
 /**
  * Pre-commit (`--staged`) or full-project (CI) validation:
- * Block Build → ESLint → Stylelint → Prettier → semântica (html-validate) → acessibilidade (axe).
+ * Block Build → ESLint → Stylelint → Prettier → semântica (html-validate) → acessibilidade (axe)
+ * → Lighthouse nos Drafts (pre-commit: sem Performance; CI: as 4 categorias).
  * @param {{ root: string, config: object }} ctx
  * @param {{ staged?: boolean }} opts
  * @returns {Promise<boolean>}
@@ -121,6 +123,10 @@ export default async function check(ctx, { staged = false } = {}) {
   if (sources.length) {
     await step('Semântica (html-validate)', () => tool(root, 'html-validate', sources), failures);
     await step('Acessibilidade (axe)', () => checkA11y(root, blocks), failures);
+    if (ctx.config.lighthouse !== false) {
+      const categories = staged ? STAGED_CATEGORIES : CATEGORIES;
+      await step('Lighthouse', () => checkLighthouse(root, ctx.config, { blocks, categories }), failures);
+    }
   }
 
   if (failures.length) {

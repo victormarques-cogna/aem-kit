@@ -30,12 +30,15 @@ New blocks are **HTML-first**. You edit only the Block Source `blocks/{name}/{na
 - `npm run aem:build` — Block Build for every Block Source + `build:json`. One block only: `npm run aem:build -- <name>`
 - `npm run aem:up` — AEM CLI (`--html-folder drafts`) + `aem:watch`
 - `npm run aem:watch` — rebuilds a block when `blocks/{name}/{name}.html` or `blocks/{name}/{name}.enhance.js` is created, changed or removed
-- `npm run check` — full validation (what CI runs): Block Build of every block (fails if Generated Artifacts are not committed), ESLint, Stylelint, Prettier, html-validate and axe
+- `npm run check` — full validation (what CI runs): Block Build of every block (fails if Generated Artifacts are not committed), ESLint, Stylelint, Prettier, html-validate, axe and Lighthouse on every Draft (all 4 categories)
+- `npm run aem:lighthouse` — Lighthouse (mobile, like PageSpeed) on the Drafts: Performance, Accessibility, Best Practices and SEO must each score at least `lighthouse.minScore` (default 90) in `aem-kit.config.json`. One block: `npm run aem:lighthouse -- <name>`; a page: `-- --url <url>`; the deployed site of the current branch: `-- --deployed` (`https://{branch}--{repo}--{owner}.aem.live` for `main`, `.aem.page` otherwise, pages from `lighthouse.urls`). When the first Performance run is below the minimum it runs `lighthouse.runs` times (default 3) and keeps the median. On a failure it prints the audits that cost the most points
 - Pre-commit (husky → `aem-kit check --staged`), on staged files only:
   1. Block Build of the blocks whose Block Source or `enhance.js` is staged (including deletions); stages only their Generated Artifacts (`_{name}.json`, `{name}.js`, `{name}.css`, `drafts/{name}.html`, `models/_section.json`, `component-*.json`)
   2. ESLint, Stylelint and `prettier --check` on the staged files
   3. Semantics: Source Gate + `html-validate` (`.htmlvalidate.json`) on those Block Sources
   4. Accessibility: axe (WCAG 2.1 A/AA) on `drafts/{name}.html` rendered in headless Chromium (Playwright). `serious`/`critical` violations block the commit; `moderate`/`minor` are warnings
+  5. Lighthouse on those Drafts: Accessibility, Best Practices and SEO below the minimum block the commit. Performance is not measured here (too noisy on a dev machine): CI (`npm run check`) blocks it, and `.github/workflows/aem-kit-lighthouse.yaml` measures the real pages after every push to `main`, once AEM Code Sync has published the code
+- Lighthouse rules: fix the cause, never lower `minScore`, add `skipAudits` or set `lighthouse: false` to make a check pass (only with the human's explicit approval). Drafts must load like a real page: keep `<header></header>` and `<footer></footer>` around `<main>` (without them `loadHeader` throws and Best Practices drops), and commit Draft images optimized (WebP, sized to their display; Performance measures them). SEO `is-crawlable` is skipped on `*.aem.page`/`*.aem.live` (AEM always sends `noindex` there) and `canonical` on Drafts
 - Never bypass the hook with `--no-verify`: CI runs the same checks
 
 ### Block Source markers
@@ -226,7 +229,7 @@ Pages are progressively loaded in three phases to maximize performance. This pro
 - Include alt text for images
 - Test with screen readers
 - Follow WCAG 2.1 AA guidelines
-- Automated: `npm run check` (and the pre-commit) runs axe on every HTML-first block's Draft; keep `drafts/{name}.html` representative of real content
+- Automated: `npm run check` (and the pre-commit) runs axe and Lighthouse on every HTML-first block's Draft; keep `drafts/{name}.html` representative of real content
 
 ## Deployment
 

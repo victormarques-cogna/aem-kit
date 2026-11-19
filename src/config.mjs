@@ -91,6 +91,28 @@ export function loadConfig(root) {
     }
   }
 
+  if (config.lighthouse !== undefined && config.lighthouse !== false) {
+    const lh = config.lighthouse;
+    if (!isObject(lh)) errors.push('lighthouse deve ser um objeto ou false.');
+    else {
+      if (lh.minScore !== undefined && !(Number.isInteger(lh.minScore) && lh.minScore >= 0 && lh.minScore <= 100)) {
+        errors.push('lighthouse.minScore deve ser um inteiro de 0 a 100.');
+      }
+      if (lh.formFactor !== undefined && !['mobile', 'desktop'].includes(lh.formFactor)) {
+        errors.push('lighthouse.formFactor deve ser "mobile" ou "desktop".');
+      }
+      if (lh.runs !== undefined && !(Number.isInteger(lh.runs) && lh.runs >= 1 && lh.runs <= 5)) {
+        errors.push('lighthouse.runs deve ser um inteiro de 1 a 5.');
+      }
+      if (lh.urls !== undefined && !(Array.isArray(lh.urls) && lh.urls.every((u) => typeof u === 'string' && u.startsWith('/')))) {
+        errors.push('lighthouse.urls deve ser uma lista de caminhos (ex.: ["/"]).');
+      }
+      if (lh.skipAudits !== undefined && !(Array.isArray(lh.skipAudits) && lh.skipAudits.every((a) => typeof a === 'string'))) {
+        errors.push('lighthouse.skipAudits deve ser uma lista de ids de auditoria.');
+      }
+    }
+  }
+
   if (errors.length) {
     throw new Error(`${CONFIG_FILE} inválido:\n- ${errors.join('\n- ')}`);
   }
