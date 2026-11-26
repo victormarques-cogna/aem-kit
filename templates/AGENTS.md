@@ -73,10 +73,11 @@ New blocks are **HTML-first**. You edit only the Block Source `blocks/{name}/{na
 - Responsive: mobile first with the Tailwind default breakpoints `sm` 640px, `md` 768px, `lg` 1024px, `xl` 1280px, `2xl` 1536px. Hand-written CSS uses the same widths in `min-width` queries
 - Language: UE labels (`data-label`, `data-item-title`), default copy and Drafts are in {{LANGUAGE_NAME}}
 - Design tokens: use the project theme (below) instead of arbitrary values such as `bg-[#004664]`. Add or rename tokens in `aem-kit.config.json` and run `npm run aem:init`
+- Typography: when `typography` is configured, use its styles (`text-{name}` sets size, line height and weight together) instead of combining `text-[..] leading-[..] font-..`. Responsive styles are separate tokens: `text-mobile-h2 xl:text-desktop-h2`
 - Source Gate (fails the build; messages in PT-BR): `data-component` limited to `text` | `richtext` | `reference` | `select` | `link` (`link` only on `<a>`), `data-label` (or `aria-label`) on every field, at least one heading (`h1`–`h6`), `alt` on every `<img>`. The build also fails on: missing `data-block`, `data-block`/`data-title` not matching the folder, no fields, duplicate field names, `data-item` without id or fields
 - Drafts: `drafts/{name}.html` is a full page; the block markup in it is resynced from the field defaults on every build (manual edits inside the block are overwritten, the rest of the page is kept). Preview at `/drafts/{name}` with `npm run aem:up`
 - Global CSS: `styles/styles.css` only has a reset in `@layer base` (so Tailwind utilities win) and the font variables. There is no global typography, button, link or section layout styling: style everything inside the block
-- Font: {{FONT_FAMILY}} is the main font (`--font-family`, used by `--body-font-family` and `--heading-font-family`; `font-sans` in Tailwind), with a metric-matched fallback in the aem-kit region of `styles/styles.css`. `styles/fonts.css` loads it after LCP. Both come from `font` in `aem-kit.config.json`
+- Font: {{FONT_FAMILY}} is the main font (`--font-family`, used by `--body-font-family`; `font-sans` in Tailwind, the page default), with a metric-matched fallback in the aem-kit region of `styles/styles.css`. `styles/fonts.css` loads it after LCP. Both come from `font` in `aem-kit.config.json`. {{HEADING_FONT}}
 - Formatting: Prettier (+ `prettier-plugin-tailwindcss` class sorting) only covers Block Sources (`blocks/{name}/{name}.html`) and `styles/*.css` (see `.prettierignore`). JS is formatted by ESLint (`npm run lint:fix`) because Prettier conflicts with it
 - `styles/tailwind.css` only feeds Tailwind IntelliSense in the editor; pages never load it
 - Each block's compiled CSS is wrapped in `@scope (:has(> .{name}))` (the block and everything inside it): its utilities only apply inside that block, so several blocks on one page never override each other's classes (e.g. one block's `flex-col` beating another's `xl:flex-row`). Elements you create in `enhance.js` must live inside the block to get its classes
@@ -158,7 +159,7 @@ New blocks are **HTML-first**. You edit only the Block Source `blocks/{name}/{na
     - Good: `.{blockname} .item-list`
   - Avoid classes `{blockname}-container` and `{blockname}-wrapper` as those are used on sections and could be confusing.
 - Global CSS is intentionally minimal (reset + font): there is no global typography, button, link or section layout styling
-- {{FONT_FAMILY}} is the main font: use `var(--font-family)` / `font-sans` (or inherit it) instead of declaring other font families
+- {{FONT_FAMILY}} is the main font: use `var(--font-family)` / `font-sans` (or inherit it), and `font-heading` when a heading font is configured, instead of declaring other font families
 
 ### HTML
 - Use semantic HTML5 elements

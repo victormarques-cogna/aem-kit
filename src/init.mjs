@@ -112,9 +112,20 @@ function tokensMarkdown(config) {
     '| Token | Value | Tailwind |',
     '| --- | --- | --- |',
     `| font | \`${stack}\` | \`font-sans\` (also the page default) |`,
+    ...(config.headingFont ? [
+      `| heading font | \`${fontNames(config, 'headingFont').stack}\` | \`font-heading\` (titles, buttons; set it explicitly) |`,
+    ] : []),
     ...Object.entries(config.colors ?? {}).map(([name, value]) => (
       `| color \`${name}\` | \`${value}\` | \`bg-${name}\`, \`text-${name}\`, \`border-${name}\`… |`
     )),
+    ...Object.entries(config.typography ?? {}).map(([name, style]) => {
+      const value = [
+        `${style.size}${style.lineHeight ? ` / ${style.lineHeight}` : ''}`,
+        style.weight && `weight ${style.weight}`,
+        style.letterSpacing && `tracking ${style.letterSpacing}`,
+      ].filter(Boolean).join(' · ');
+      return `| text \`${name}\` | ${value} | \`text-${name}\` (size, line height and weight together) |`;
+    }),
   ];
   const breakpoints = Object.entries(config.breakpoints ?? {});
   const bp = breakpoints.length
@@ -266,8 +277,10 @@ ${fill(template('managed/criar-bloco.md'), { ARGS: '$ARGUMENTS' })}`);
   }));
 
   // 5. Files generated from the Kit Config (managed)
-  await write('styles/fonts.css', config.font.url
-    ? `${header(`${managedNote} Source: font.url in ${CONFIG_FILE}.`)}@import url('${config.font.url}');\n`
+  const fontUrls = [config.font.url, config.headingFont?.url].filter(Boolean);
+  await write('styles/fonts.css', fontUrls.length
+    ? `${header(`${managedNote} Source: font.url / headingFont.url in ${CONFIG_FILE}.`)}${
+      fontUrls.map((url) => `@import url('${url}');\n`).join('')}`
     : `${header(`${managedNote} No font.url in ${CONFIG_FILE}: the font must be installed locally or self-hosted.`)}`);
   const intellisenseNote = `${managedNote}\n * Tailwind IntelliSense entry only (theme from ${CONFIG_FILE}). Pages never load this file.`;
   await write('styles/tailwind.css', [
@@ -285,6 +298,13 @@ ${fill(template('managed/criar-bloco.md'), { ARGS: '$ARGUMENTS' })}`);
     PROJECT_DESCRIPTION: config.project.description ?? '',
     LANGUAGE_NAME: LANGUAGE_NAMES[config.language],
     FONT_FAMILY: config.font.family,
+    HEADING_FONT: config.headingFont
+      ? [
+        `${config.headingFont.family} is the heading font (\`--heading-font-family\`; \`font-heading\` in Tailwind),`,
+        'loaded the same way from `headingFont`. Nothing applies it automatically: add `font-heading` to titles',
+        'and to every element whose typography style uses it',
+      ].join(' ')
+      : 'There is no separate heading font: titles use the main font',
     TOKENS: tokensMarkdown(config),
   };
   const withNotes = async (rel, file, fallback) => {

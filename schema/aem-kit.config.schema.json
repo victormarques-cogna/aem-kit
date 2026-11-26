@@ -41,11 +41,47 @@
         }
       }
     },
+    "headingFont": {
+      "type": "object",
+      "required": ["family"],
+      "additionalProperties": false,
+      "properties": {
+        "family": { "type": "string", "minLength": 1, "description": "Família dos títulos (ex.: Montserrat), diferente da principal. Vira --heading-font-family e font-heading." },
+        "url": { "type": "string", "pattern": "^https://", "description": "CSS da fonte (ex.: Google Fonts), carregado em styles/fonts.css após o LCP." },
+        "fallback": {
+          "type": "object",
+          "description": "Métricas do fallback local (Arial) para evitar CLS na troca de fonte.",
+          "additionalProperties": false,
+          "properties": {
+            "sizeAdjust": { "type": "string", "pattern": "^-?\\d+(\\.\\d+)?%$" },
+            "ascentOverride": { "type": "string", "pattern": "^-?\\d+(\\.\\d+)?%$" },
+            "descentOverride": { "type": "string", "pattern": "^-?\\d+(\\.\\d+)?%$" },
+            "lineGapOverride": { "type": "string", "pattern": "^-?\\d+(\\.\\d+)?%$" }
+          }
+        }
+      }
+    },
     "colors": {
       "type": "object",
       "description": "Tokens de cor. Cada chave vira --color-{nome} e as classes bg-{nome}, text-{nome}, border-{nome}…",
       "propertyNames": { "pattern": "^[a-z][a-z0-9-]*$" },
       "additionalProperties": { "type": "string", "minLength": 1 }
+    },
+    "typography": {
+      "type": "object",
+      "description": "Escala tipográfica: cada estilo vira a classe text-{nome} do Tailwind (tamanho, altura de linha e peso juntos). Ex.: \"desktop-h2\": { \"size\": \"40px\", \"lineHeight\": \"48px\", \"weight\": \"700\" } → text-desktop-h2.",
+      "propertyNames": { "pattern": "^[a-z][a-z0-9-]*$" },
+      "additionalProperties": {
+        "type": "object",
+        "required": ["size"],
+        "additionalProperties": false,
+        "properties": {
+          "size": { "type": "string", "pattern": "^\\d+(\\.\\d+)?(px|rem|em)$" },
+          "lineHeight": { "type": "string", "pattern": "^\\d+(\\.\\d+)?(px|rem|em)$" },
+          "weight": { "type": "string", "pattern": "^[1-9]00$" },
+          "letterSpacing": { "type": "string", "pattern": "^-?\\d+(\\.\\d+)?(px|rem|em)$|^0$" }
+        }
+      }
     },
     "breakpoints": {
       "type": "object",

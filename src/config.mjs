@@ -8,6 +8,8 @@ const LANGUAGES = ['pt-BR', 'en'];
 const COLOR_NAME = /^[a-z][a-z0-9-]*$/;
 const BREAKPOINT_NAME = /^[a-z0-9][a-z0-9-]*$/;
 const CSS_LENGTH = /^\d+(\.\d+)?(px|rem|em)$/;
+const LETTER_SPACING = /^-?\d+(\.\d+)?(px|rem|em)$|^0$/;
+const TYPOGRAPHY_KEYS = ['size', 'lineHeight', 'weight', 'letterSpacing'];
 const PERCENT = /^-?\d+(\.\d+)?%$/;
 
 /** Starter config written by `aem-kit init` when the project has none. */
@@ -58,19 +60,29 @@ export function loadConfig(root) {
   if (!LANGUAGES.includes(config.language)) {
     errors.push(`language deve ser um de: ${LANGUAGES.join(', ')}.`);
   }
-  if (!isObject(config.font) || !config.font.family?.trim()) {
-    errors.push('font.family é obrigatório.');
-  } else {
-    if (!toClassName(config.font.family)) errors.push('font.family inválido.');
-    if (config.font.url && !/^https:\/\//.test(config.font.url)) errors.push('font.url deve ser https.');
-    const fallback = config.font.fallback ?? {};
-    Object.entries(fallback).forEach(([key, value]) => {
-      if (!['sizeAdjust', 'ascentOverride', 'descentOverride', 'lineGapOverride'].includes(key)) {
-        errors.push(`font.fallback.${key} não é suportado.`);
+  const validateFont = (key) => {
+    const font = config[key];
+    if (!isObject(font) || !font.family?.trim()) {
+      errors.push(`${key}.family é obrigatório.`);
+      return;
+    }
+    if (!toClassName(font.family)) errors.push(`${key}.family inválido.`);
+    if (font.url && !/^https:\/\//.test(font.url)) errors.push(`${key}.url deve ser https.`);
+    Object.entries(font.fallback ?? {}).forEach(([name, value]) => {
+      if (!['sizeAdjust', 'ascentOverride', 'descentOverride', 'lineGapOverride'].includes(name)) {
+        errors.push(`${key}.fallback.${name} não é suportado.`);
       } else if (!PERCENT.test(value)) {
-        errors.push(`font.fallback.${key} deve ser uma porcentagem (ex.: "107.06%").`);
+        errors.push(`${key}.fallback.${name} deve ser uma porcentagem (ex.: "107.06%").`);
       }
     });
+  };
+  validateFont('font');
+  if (config.headingFont !== undefined) {
+    validateFont('headingFont');
+    if (isObject(config.font) && isObject(config.headingFont)
+      && toClassName(config.font.family ?? '') === toClassName(config.headingFont.family ?? '')) {
+      errors.push('headingFont.family é igual a font.family: remova headingFont.');
+    }
   }
   if (config.colors !== undefined) {
     if (!isObject(config.colors)) errors.push('colors deve ser um objeto { nome: cor }.');
@@ -78,6 +90,29 @@ export function loadConfig(root) {
       Object.entries(config.colors).forEach(([name, value]) => {
         if (!COLOR_NAME.test(name)) errors.push(`colors.${name}: use kebab-case minúsculo (ex.: "primary", "gray-700").`);
         if (typeof value !== 'string' || !value.trim()) errors.push(`colors.${name}: valor inválido.`);
+      });
+    }
+  }
+  if (config.typography !== undefined) {
+    if (!isObject(config.typography)) errors.push('typography deve ser um objeto { nome: { size, lineHeight, weight } }.');
+    else {
+      Object.entries(config.typography).forEach(([name, style]) => {
+        const at = `typography.${name}`;
+        if (!COLOR_NAME.test(name)) errors.push(`${at}: use kebab-case minúsculo (ex.: "desktop-h2").`);
+        if (!isObject(style)) {
+          errors.push(`${at} deve ser um objeto { size, lineHeight, weight }.`);
+          return;
+        }
+        Object.keys(style).filter((key) => !TYPOGRAPHY_KEYS.includes(key))
+          .forEach((key) => errors.push(`${at}.${key} não é suportado (use ${TYPOGRAPHY_KEYS.join(', ')}).`));
+        if (!CSS_LENGTH.test(style.size ?? '')) errors.push(`${at}.size: use px, rem ou em (ex.: "28px").`);
+        if (style.lineHeight !== undefined && !CSS_LENGTH.test(style.lineHeight)) {
+          errors.push(`${at}.lineHeight: use px, rem ou em (ex.: "36px").`);
+        }
+        if (style.weight !== undefined && !/^[1-9]00$/.test(String(style.weight))) errors.push(`${at}.weight: use 100 a 900 (ex.: "700").`);
+        if (style.letterSpacing !== undefined && !LETTER_SPACING.test(style.letterSpacing)) {
+          errors.push(`${at}.letterSpacing: use px, rem ou em (ex.: "0.08em").`);
+        }
       });
     }
   }

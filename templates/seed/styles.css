@@ -21,7 +21,7 @@
 
   /* fonts */
   --body-font-family: var(--font-family);
-  --heading-font-family: var(--font-family);
+  --heading-font-family: var(--heading-font, var(--font-family));
 
   /* aem-kit:font-vars:start (managed by aem-kit from aem-kit.config.json, do not edit) */
 {{FONT_VARS}}
