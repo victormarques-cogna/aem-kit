@@ -182,7 +182,7 @@ export async function deployedBase(root) {
  * @param {string} root
  * @param {object} config aem-kit config
  * @param {{
- *   blocks?: string[], urls?: string[], categories?: string[], runs?: number, blocked?: string[],
+ *   blocks?: string[], components?: string[], urls?: string[], categories?: string[], runs?: number, blocked?: string[],
  *   report?: boolean, title?: string,
  * }} opts
  *   blocked: URL patterns Chrome must not load (e.g. `*googletagmanager.com*`), to measure without them
@@ -191,11 +191,12 @@ export async function deployedBase(root) {
  * @returns {Promise<boolean>}
  */
 export default async function checkLighthouse(root, config, {
-  blocks = [], urls = [], categories = CATEGORIES, runs, blocked = [], report = false, title,
+  blocks = [], components = [], urls = [], categories = CATEGORIES, runs, blocked = [], report = false, title,
 } = {}) {
   const settings = lighthouseSettings(config);
   const maxRuns = runs ?? settings.runs;
-  const drafts = blocks.filter((blockId) => existsSync(path.join(root, 'drafts', `${blockId}.html`)));
+  const drafts = [...blocks, ...components.map((id) => `components/${id}`)]
+    .filter((page) => existsSync(path.join(root, 'drafts', `${page}.html`)));
   if (!drafts.length && !urls.length) return true;
 
   const tools = await loadTools(root);

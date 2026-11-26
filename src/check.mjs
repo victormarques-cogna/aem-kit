@@ -4,11 +4,14 @@ import path from 'node:path';
 import checkA11y from './a11y.mjs';
 import checkLighthouse, { CATEGORIES, STAGED_CATEGORIES } from './lighthouse.mjs';
 import {
-  AGGREGATE_PATHS, buildBlocks, buildJson, generatedPaths, hasHtmlSource, listHtmlFirstBlocks,
+  AGGREGATE_PATHS, buildBlocks, buildJson, componentArtifactPaths, generatedPaths, hasHtmlSource, listHtmlFirstBlocks,
 } from './build.mjs';
+import { listComponents } from './components.mjs';
 import { projectBin, run } from './project.mjs';
 
 const BLOCK_SOURCE_RE = /^blocks\/([^/]+)\/\1\.(html|enhance\.js)$/;
+// Any change under components/ can change every block (shared classes) and the showcases.
+const COMPONENT_RE = /^components\//;
 const PARTIAL_RE = /(^|\/)_[^/]*\.json$/;
 
 /**
@@ -70,6 +73,7 @@ export default async function check(ctx, { staged = false } = {}) {
   const { root } = ctx;
   const failures = [];
   let blocks;
+  let components = [];
   let files;
 
   if (staged) {
@@ -78,7 +82,12 @@ export default async function check(ctx, { staged = false } = {}) {
     const flags = await Promise.all(candidates.map((blockId) => hasHtmlSource(root, blockId)));
     blocks = candidates.filter((_, index) => flags[index]);
 
-    if (blocks.length) {
+    if (changed.some((file) => COMPONENT_RE.test(file))) {
+      console.log('▸ Block Build: todos os blocos e componentes (components/ mudou)');
+      blocks = await buildBlocks(ctx);
+      components = await listComponents(root);
+      await stage(root, [...blocks.flatMap(generatedPaths), ...AGGREGATE_PATHS, ...(await componentArtifactPaths(root))]);
+    } else if (blocks.length) {
       console.log(`▸ Block Build: ${blocks.join(', ')}`);
       await buildBlocks(ctx, blocks);
       // Stage only Generated Artifacts, never unrelated work in blocks/ or models/
@@ -94,10 +103,13 @@ export default async function check(ctx, { staged = false } = {}) {
   } else {
     console.log('▸ Block Build (todos os blocos HTML-first)');
     // Generated Artifacts must already match their Block Sources (CI catches a forgotten build)
-    const tracked = [...(await listHtmlFirstBlocks(root)).flatMap(generatedPaths), ...AGGREGATE_PATHS];
+    const tracked = [
+      ...(await listHtmlFirstBlocks(root)).flatMap(generatedPaths), ...AGGREGATE_PATHS, ...(await componentArtifactPaths(root)),
+    ];
     const snapshot = (list) => Promise.all(list.map((file) => readFile(path.join(root, file), 'utf8').catch(() => null)));
     const before = await snapshot(tracked);
     blocks = await buildBlocks(ctx);
+    components = await listComponents(root);
     const after = await snapshot(tracked);
     const stale = tracked.filter((_, index) => before[index] !== after[index]);
     if (stale.length) {
@@ -109,23 +121,25 @@ export default async function check(ctx, { staged = false } = {}) {
   const pick = (re) => (files ? files.filter((file) => re.test(file)) : null);
   const jsFiles = pick(/\.(js|mjs|cjs|json)$/);
   const cssFiles = pick(/\.css$/);
-  const sources = blocks.map((blockId) => `blocks/${blockId}/${blockId}.html`)
-    .filter((file) => existsSync(path.join(root, file)));
+  const sources = [
+    ...blocks.map((blockId) => `blocks/${blockId}/${blockId}.html`),
+    ...components.map((id) => `components/${id}/${id}.html`),
+  ].filter((file) => existsSync(path.join(root, file)));
 
   if (!jsFiles || jsFiles.length) {
     await step('ESLint', () => tool(root, 'eslint', jsFiles ?? ['.', '--ext', '.json,.js,.mjs']), failures);
   }
   if (!cssFiles || cssFiles.length) {
-    const targets = cssFiles ?? ['blocks/**/*.css', 'styles/*.css'];
+    const targets = cssFiles ?? ['blocks/**/*.css', 'styles/*.css', 'components/**/*.css'];
     await step('Stylelint', () => tool(root, 'stylelint', ['--allow-empty-input', ...targets]), failures);
   }
   await step('Prettier', () => tool(root, 'prettier', ['--check', '--ignore-unknown', ...(files ?? ['.'])]), failures);
   if (sources.length) {
     await step('Semântica (html-validate)', () => tool(root, 'html-validate', sources), failures);
-    await step('Acessibilidade (axe)', () => checkA11y(root, blocks), failures);
+    await step('Acessibilidade (axe)', () => checkA11y(root, blocks, components), failures);
     if (ctx.config.lighthouse !== false) {
       const categories = staged ? STAGED_CATEGORIES : CATEGORIES;
-      await step('Lighthouse', () => checkLighthouse(root, ctx.config, { blocks, categories }), failures);
+      await step('Lighthouse', () => checkLighthouse(root, ctx.config, { blocks, components, categories }), failures);
     }
   }
 

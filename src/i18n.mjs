@@ -6,6 +6,9 @@ const STRINGS = {
     textLabel: 'Texto',
     textDefault: 'Adicione seu conteúdo aqui.',
     draftDescription: (title) => `Página de rascunho do bloco ${title}`,
+    componentTitle: (title) => `Componente ${title}`,
+    componentDescription: (title) => `Vitrine do componente ${title}: variantes e estados`,
+    componentSample: 'Exemplo',
   },
   en: {
     headingLabel: 'Heading',
@@ -13,6 +16,9 @@ const STRINGS = {
     textLabel: 'Text',
     textDefault: 'Add your content here.',
     draftDescription: (title) => `Draft page for the ${title} block`,
+    componentTitle: (title) => `${title} component`,
+    componentDescription: (title) => `Showcase of the ${title} component: variants and states`,
+    componentSample: 'Sample',
   },
 };
 

@@ -2,7 +2,7 @@
   "extends": ["stylelint-config-standard"],
   "overrides": [
     {
-      "files": ["styles/tailwind.css"],
+      "files": ["styles/tailwind.css", "components/**/*.css"],
       "rules": {
         "import-notation": null,
         "at-rule-empty-line-before": null,

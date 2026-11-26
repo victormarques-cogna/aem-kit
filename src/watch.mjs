@@ -1,10 +1,12 @@
-import { watch as fsWatch } from 'node:fs';
+import { existsSync, watch as fsWatch } from 'node:fs';
 import path from 'node:path';
 import { buildBlocks } from './build.mjs';
 
 // Block Source (`{name}.html`) or behaviour (`{name}.enhance.js`, created/removed/changed)
 // both change the generated `{name}.js`, so either triggers a Block Build.
 const SOURCE_RE = /^([^/\\]+)[/\\]\1\.(html|enhance\.js)$/;
+// A component change can affect every block (shared classes): rebuild everything.
+const COMPONENT_RE = /^([^/\\]+)[/\\]\1\.(css|html|js)$/;
 
 /**
  * Watches Block Sources and rebuilds the affected blocks.
@@ -50,4 +52,12 @@ export default function watch(ctx) {
     const match = filename && SOURCE_RE.exec(filename);
     if (match) schedule(match[1]);
   });
+
+  const componentsDir = path.join(ctx.root, 'components');
+  if (existsSync(componentsDir)) {
+    console.log('[aem:watch] watching components/{name}/{name}.{css,html,js}');
+    fsWatch(componentsDir, { recursive: true }, (_event, filename) => {
+      if (filename && COMPONENT_RE.test(filename)) schedule();
+    });
+  }
 }

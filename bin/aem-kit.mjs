@@ -2,7 +2,8 @@
 import { buildBlocks, listHtmlFirstBlocks } from '../src/build.mjs';
 import check from '../src/check.mjs';
 import { requireConfig } from '../src/config.mjs';
-import generateBlock from '../src/generate.mjs';
+import generateBlock, { generateComponent } from '../src/generate.mjs';
+import { listComponents } from '../src/components.mjs';
 import init from '../src/init.mjs';
 import checkLighthouse, { deployedBase, lighthouseSettings, waitForCodeSync } from '../src/lighthouse.mjs';
 import { findProjectRoot, kitPackage } from '../src/project.mjs';
@@ -16,8 +17,11 @@ Uso: aem-kit <comando> [opções]
   init [--force] [--skip-install] [--diff] [--kit-spec <spec>]
                               aplica/atualiza o kit no projeto a partir de aem-kit.config.json
   generate-block <nome>       cria um bloco HTML-first + Draft e roda o Block Build
+  generate-component <nome> [--js]
+                              cria um componente reutilizável em components/<nome>/ (classes +
+                              vitrine; --js inclui o comportamento) e roda o build
   build [nome...]             Block Build (todos os blocos ou só os informados) + build:json
-  watch                       rebuild ao salvar blocks/{nome}/{nome}.{html,enhance.js}
+  watch                       rebuild ao salvar blocks/{nome}/{nome}.{html,enhance.js} ou components/
   up [args do aem up]         servidor AEM (drafts/) + watch
   check [--staged]            build + ESLint + Stylelint + Prettier + html-validate + axe + Lighthouse
                               (--staged: só o que está no commit, usado no pre-commit)
@@ -26,6 +30,7 @@ Uso: aem-kit <comando> [opções]
                               --block '*googletagmanager.com*' mede sem o GTM; --report só mede
                               e mostra (nunca reprova); --title nomeia o resumo do GitHub Actions
                               Lighthouse (mínimo em aem-kit.config.json, padrão 90) nos Drafts
+                              (blocos e vitrines; "components/<nome>" mede uma vitrine)
                               ou em URLs; --deployed usa {branch}--{repo}--{owner}.aem.live/page
 `;
 
@@ -52,6 +57,9 @@ try {
     case 'generate-block':
       await generateBlock(ctx(), args.join(' '));
       break;
+    case 'generate-component':
+      await generateComponent(ctx(), args.filter((arg) => arg !== '--js').join(' '), { js: flag('--js') });
+      break;
     case 'build':
       await buildBlocks(ctx(), args.length ? args : undefined);
       break;
@@ -68,7 +76,9 @@ try {
       const { root: dir, config } = ctx();
       const values = (name) => args.flatMap((arg, i) => (args[i - 1] === name ? [arg] : []));
       const optionNames = ['--url', '--categories', '--runs', '--block', '--title'];
-      const blocks = args.filter((arg, i) => !arg.startsWith('--') && !optionNames.includes(args[i - 1]));
+      const names = args.filter((arg, i) => !arg.startsWith('--') && !optionNames.includes(args[i - 1]));
+      const components = names.filter((name) => name.startsWith('components/')).map((name) => name.slice('components/'.length));
+      const blocks = names.filter((name) => !name.startsWith('components/'));
       const urls = values('--url');
       if (flag('--deployed')) {
         const base = await deployedBase(dir);
@@ -77,12 +87,13 @@ try {
       }
       const categories = option('--categories')?.split(',');
       const runs = option('--runs') ? Number(option('--runs')) : undefined;
-      const all = !blocks.length && !urls.length;
+      const all = !names.length && !urls.length;
       const targets = all ? await listHtmlFirstBlocks(dir) : blocks;
+      const componentTargets = all ? await listComponents(dir) : components;
       const blocked = values('--block');
       if (blocked.length) console.log(`▸ Sem carregar: ${blocked.join(', ')}`);
       if (!(await checkLighthouse(dir, config, {
-        blocks: targets, urls, categories, runs, blocked, report: flag('--report'), title: option('--title'),
+        blocks: targets, components: componentTargets, urls, categories, runs, blocked, report: flag('--report'), title: option('--title'),
       }))) process.exitCode = 1;
       break;
     }

@@ -2,7 +2,8 @@ import { existsSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import path from 'node:path';
-import { buildBlock, buildJson } from './build.mjs';
+import { buildBlock, buildBlocks, buildJson } from './build.mjs';
+import { COMPONENTS_DIR } from './components.mjs';
 import strings from './i18n.mjs';
 import { stripAccents, toClassName, toTitle } from './names.mjs';
 
@@ -78,4 +79,77 @@ export default async function generateBlock(ctx, rawName) {
   console.log(`Criado blocks/${blockId}/${blockId}.html`);
   console.log(`Criado drafts/${blockId}.html (preview em /drafts/${blockId})`);
   return blockId;
+}
+
+/**
+ * @param {string} id
+ * @returns {string} components/{id}/{id}.css starter
+ */
+function componentCss(id) {
+  return `/* Classes do componente: só @utility com nomes que começam por "${id}" (ex.: ${id}, ${id}-primary). */
+@utility ${id} {
+  @apply inline-flex items-center gap-2;
+}
+`;
+}
+
+/**
+ * @param {string} id
+ * @param {boolean} withJs
+ * @param {object} text i18n strings
+ * @returns {string} components/{id}/{id}.html starter (showcase)
+ */
+function componentShowcase(id, withJs, text) {
+  const ui = withJs ? ` data-ui="${id}"` : '';
+  return `<!-- Vitrine: mostre aqui todas as variantes e estados do componente. -->
+<div${ui} class="${id}">${text.componentSample}</div>
+`;
+}
+
+/**
+ * @param {string} id
+ * @returns {string} components/{id}/{id}.js starter
+ */
+function componentScript(id) {
+  return `/**
+ * Comportamento do componente: chamado uma vez para cada elemento com data-ui="${id}".
+ * Use o HTML nativo primeiro e deixe aqui só o que falta. Ache as partes por data-ui-part,
+ * nunca por classe, e avise o block com eventos ui:${id}:{ação}.
+ * @param {HTMLElement} root
+ */
+export default function init(root) {
+  root.dispatchEvent(new CustomEvent('ui:${id}:ready', { bubbles: true }));
+}
+`;
+}
+
+/**
+ * Component Scaffold: components/{id}/{id}.css + .html (+ .js), then the showcase build.
+ * @param {{ root: string, config: object }} ctx
+ * @param {string} rawName
+ * @param {{ js?: boolean }} [opts]
+ * @returns {Promise<string>} component id
+ */
+export async function generateComponent(ctx, rawName, { js = false } = {}) {
+  const id = toClassName(stripAccents(rawName).trim());
+  if (!id) throw new Error('Uso: npm run aem:generate-component -- <nome> [--js]');
+  const dir = path.join(ctx.root, COMPONENTS_DIR, id);
+  if (existsSync(dir)) throw new Error(`Componente "${id}" já existe (components/${id}). Abortando.`);
+
+  await mkdir(dir, { recursive: true });
+  const files = [
+    [`${id}.css`, componentCss(id)],
+    [`${id}.html`, componentShowcase(id, js, strings(ctx.config.language))],
+  ];
+  await Promise.all(files.map(async ([name, source]) => {
+    const file = path.join(dir, name);
+    await writeFile(file, await formatWithPrettier(ctx.root, file, source));
+  }));
+  if (js) await writeFile(path.join(dir, `${id}.js`), componentScript(id));
+  // Every block is compiled with every component's classes: rebuild all (+ showcases, IntelliSense).
+  await buildBlocks(ctx);
+
+  console.log(`Criado components/${id}/ (${id}.css, ${id}.html${js ? `, ${id}.js` : ''})`);
+  console.log(`Vitrine em /drafts/components/${id}`);
+  return id;
 }

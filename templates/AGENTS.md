@@ -27,16 +27,17 @@ New blocks are **HTML-first**. You edit only the Block Source `blocks/{name}/{na
 
 - `npm run aem:init` — idempotent Toolchain Bootstrap: re-applies aem-kit (npm scripts, configs, hooks, `AGENTS.md`, agent adapters) from `aem-kit.config.json`. Run it after changing the config or updating aem-kit
 - `npm run aem:generate-block -- <name>` — Block Scaffold (Block Source with `heading` + `text` fields, formatted with Prettier, and a Draft, copy in the project language) then Block Build. Name is normalized to kebab-case without accents (`"Seção X"` → `secao-x`); aborts if the block or its Draft already exists
-- `npm run aem:build` — Block Build for every Block Source + `build:json`. One block only: `npm run aem:build -- <name>`
+- `npm run aem:generate-component -- <name> [--js]` — Component Scaffold: `components/{name}/{name}.css` (classes) and `{name}.html` (showcase), plus `{name}.js` with `--js` (behaviour), then a full build. See "Reusable components" below
+- `npm run aem:build` — Block Build for every Block Source + `build:json`, plus every component showcase and `styles/tailwind.css`. One block only: `npm run aem:build -- <name>`
 - `npm run aem:up` — AEM CLI (`--html-folder drafts`) + `aem:watch`
-- `npm run aem:watch` — rebuilds a block when `blocks/{name}/{name}.html` or `blocks/{name}/{name}.enhance.js` is created, changed or removed
-- `npm run check` — full validation (what CI runs): Block Build of every block (fails if Generated Artifacts are not committed), ESLint, Stylelint, Prettier, html-validate, axe and Lighthouse on every Draft (all 4 categories)
-- `npm run aem:lighthouse` — Lighthouse (mobile, like PageSpeed) on the Drafts: Performance, Accessibility, Best Practices and SEO must each score at least `lighthouse.minScore` (default 90) in `aem-kit.config.json`. One block: `npm run aem:lighthouse -- <name>`; a page: `-- --url <url>`; the deployed site of the current branch: `-- --deployed` (`https://{branch}--{repo}--{owner}.aem.live` for `main`, `.aem.page` otherwise, pages from `lighthouse.urls`). When the first Performance run is below the minimum it runs `lighthouse.runs` times (default 3) and keeps the median. On a failure it prints the audits that cost the most points
+- `npm run aem:watch` — rebuilds a block when `blocks/{name}/{name}.html` or `blocks/{name}/{name}.enhance.js` is created, changed or removed, and everything when a file in `components/` changes (the `components/` folder must exist when the watcher starts)
+- `npm run check` — full validation (what CI runs): Block Build of every block and component (fails if Generated Artifacts are not committed), ESLint, Stylelint, Prettier, html-validate, axe and Lighthouse on every Draft and component showcase (all 4 categories)
+- `npm run aem:lighthouse` — Lighthouse (mobile, like PageSpeed) on the Drafts: Performance, Accessibility, Best Practices and SEO must each score at least `lighthouse.minScore` (default 90) in `aem-kit.config.json`. One block: `npm run aem:lighthouse -- <name>`; a component showcase: `-- components/<name>`; a page: `-- --url <url>`; the deployed site of the current branch: `-- --deployed` (`https://{branch}--{repo}--{owner}.aem.live` for `main`, `.aem.page` otherwise, pages from `lighthouse.urls`). When the first Performance run is below the minimum it runs `lighthouse.runs` times (default 3) and keeps the median. On a failure it prints the audits that cost the most points
 - Pre-commit (husky → `aem-kit check --staged`), on staged files only:
-  1. Block Build of the blocks whose Block Source or `enhance.js` is staged (including deletions); stages only their Generated Artifacts (`_{name}.json`, `{name}.js`, `{name}.css`, `drafts/{name}.html`, `models/_section.json`, `component-*.json`)
+  1. Block Build of the blocks whose Block Source or `enhance.js` is staged (including deletions); stages only their Generated Artifacts (`_{name}.json`, `{name}.js`, `{name}.css`, `drafts/{name}.html`, `models/_section.json`, `component-*.json`). When anything in `components/` is staged, every block and component is rebuilt (shared classes) and their Generated Artifacts (plus `drafts/components/*` and `styles/tailwind.css`) are staged
   2. ESLint, Stylelint and `prettier --check` on the staged files
-  3. Semantics: Source Gate + `html-validate` (`.htmlvalidate.json`) on those Block Sources
-  4. Accessibility: axe (WCAG 2.1 A/AA) on `drafts/{name}.html` rendered in headless Chromium (Playwright). `serious`/`critical` violations block the commit; `moderate`/`minor` are warnings
+  3. Semantics: Source Gate + `html-validate` (`.htmlvalidate.json`) on those Block Sources (and component showcases)
+  4. Accessibility: axe (WCAG 2.1 A/AA) on `drafts/{name}.html` (and `drafts/components/{name}.html`) rendered in headless Chromium (Playwright). `serious`/`critical` violations block the commit; `moderate`/`minor` are warnings
   5. Lighthouse on those Drafts: Accessibility, Best Practices and SEO below the minimum block the commit. Performance is not measured here (too noisy on a dev machine): CI (`npm run check`) blocks it, and `.github/workflows/aem-kit-lighthouse.yaml` measures the real pages after every push to `main`, once AEM Code Sync has published the code. With `tracking` configured, that workflow blocks on the score **without GTM** (`--block '*googletagmanager.com*'`: the tags are managed in GTM, outside the repository) and then reports the score with GTM in the job summary (`--report`, never fails)
 - Lighthouse rules: fix the cause, never lower `minScore`, add `skipAudits` or set `lighthouse: false` to make a check pass (only with the human's explicit approval). Drafts must load like a real page: keep `<header></header>` and `<footer></footer>` around `<main>` (without them `loadHeader` throws and Best Practices drops), and commit Draft images optimized (WebP, sized to their display; Performance measures them). SEO `is-crawlable` is skipped on `*.aem.page`/`*.aem.live` (AEM always sends `noindex` there) and `canonical` on Drafts
 - Never bypass the hook with `--no-verify`: CI runs the same checks
@@ -67,6 +68,23 @@ New blocks are **HTML-first**. You edit only the Block Source `blocks/{name}/{na
 
 - Optional and hand-written (ESLint/Airbnb applies). Signature: `export default function enhance(block)` (may be `async`); it is called after the template is rendered. See `blocks/faq/faq.enhance.js`
 
+### Reusable components (`components/`)
+
+A component is a piece of UI reused by several blocks (Button, Badge, Accordion, Tabs, Modal, Menu, Carousel, form fields). It is **not** a block and has **no** Universal Editor model: the block owns the content (fields, items, `select` variants) and builds the markup; the component owns the look and, optionally, the behaviour. (Unrelated to the UE `component-*.json` aggregates.)
+
+- Structure: `components/{name}/` (kebab-case, no accents) with
+  - `{name}.css` (required): only Tailwind `@utility` rules whose names start with the component name — base `{name}`, variants `{name}-primary`, sizes `{name}-lg`, parts `{name}-item`, `{name}-trigger`. Use `@apply` with project tokens only. Anything else at the top level fails the build (it would leak, unscoped, into every block)
+  - `{name}.html` (required): the showcase, every variant and state. The build turns it into `drafts/components/{name}.html` + `.css` (Generated Artifacts, a standalone page without `scripts.js`), validated by html-validate, axe and Lighthouse. Preview at `/drafts/components/{name}`
+  - `{name}.js` (optional): behaviour, `export default function init(root)`
+- How blocks use it: just the classes in the Block Source, e.g. `<a data-field="cta" data-component="link" data-label="Botão" class="button button-primary">`. Every block (and showcase) is compiled with every component's classes, but only the classes it uses end up in its `{block}.css` (scoped like any utility). Tailwind variants work on them: `md:button-lg`, `data-[estilo=…]:` (select on the same element) or `in-data-[estilo=…]:` (select on an ancestor: one element cannot hold two fields). When the author picks the variant, condition **every** option, since the select always sets a value and two variants applied together overlap (e.g. the primary background stays under the secondary): `button in-data-[estilo=primario]:button-primary in-data-[estilo=secundario]:button-secondary`
+- Behaviour: put `data-ui="{name}"` on the component's root element in the Block Source. The generated `{block}.js` then calls `initComponents(block)` from the Managed File `scripts/ui.js` right after rendering and **before** `enhance.js`: it imports `components/{name}/{name}.js` once per page (only when used) and calls `init(el)` for each element, marking it `data-ui-ready`. A `data-ui` without `components/{name}/{name}.js` fails the build
+- `init(root)` contract: options from `data-ui-{option}` attributes on the root; parts found by `data-ui-part="{part}"`, **never** by class (classes are styling); only change state (`open`, `hidden`, `aria-*`, state attributes), never the author's content; announce things with `root.dispatchEvent(new CustomEvent('ui:{name}:{action}', { bubbles: true, detail }))` so `enhance.js` and tracking can listen; no external dependencies
+- Native HTML first, JS only for what is missing: Accordion → `<details name="…">`/`<summary>` (one open at a time without JS), Modal → `<dialog>`, Menu/Dropdown → `popover` + `<button popovertarget>`, Carousel → CSS `scroll-snap`, Button → `<a>` (navigates) or `<button>` (action). The look comes from CSS, never from JS (no layout shift)
+- When to create one: when the same piece is (or will be) used by **two or more blocks**. A piece used by one block stays in the block. Section layout (grids, columns, spacing) is the block's job, never a component
+- Changing a component changes every block that uses it on every site of the repository; renaming or removing a class breaks those blocks: `git grep` its uses and update them in the same commit. For a big visual change add a new variant, migrate the blocks, then remove the old one
+- Components do not apply to Default Content (no Tailwind there) nor to Legacy Blocks (hand-written CSS): convert the block to HTML-first to use them
+- A component an author must place freely (e.g. a standalone accordion) becomes a block that uses the component inside (e.g. `faq`)
+
 ### Conventions
 
 - Tailwind is required for **new** blocks. Legacy Blocks without `.html` (`cards`, `columns`, `hero`, `fragment`, `header`, `footer`) remain valid with hand-written CSS
@@ -78,8 +96,8 @@ New blocks are **HTML-first**. You edit only the Block Source `blocks/{name}/{na
 - Drafts: `drafts/{name}.html` is a full page; the block markup in it is resynced from the field defaults on every build (manual edits inside the block are overwritten, the rest of the page is kept). Preview at `/drafts/{name}` with `npm run aem:up`
 - Global CSS: `styles/styles.css` only has a reset in `@layer base` (so Tailwind utilities win) and the font variables. There is no global typography, button, link or section layout styling: style everything inside the block
 - Font: {{FONT_FAMILY}} is the main font (`--font-family`, used by `--body-font-family`; `font-sans` in Tailwind, the page default), with a metric-matched fallback in the aem-kit region of `styles/styles.css`. `styles/fonts.css` loads it after LCP. Both come from `font` in `aem-kit.config.json`. {{HEADING_FONT}}
-- Formatting: Prettier (+ `prettier-plugin-tailwindcss` class sorting) only covers Block Sources (`blocks/{name}/{name}.html`) and `styles/*.css` (see `.prettierignore`). JS is formatted by ESLint (`npm run lint:fix`) because Prettier conflicts with it
-- `styles/tailwind.css` only feeds Tailwind IntelliSense in the editor; pages never load it
+- Formatting: Prettier (+ `prettier-plugin-tailwindcss` class sorting) only covers Block Sources (`blocks/{name}/{name}.html`), components (`components/{name}/{name}.{html,css}`) and `styles/*.css` (see `.prettierignore`). JS is formatted by ESLint (`npm run lint:fix`) because Prettier conflicts with it
+- `styles/tailwind.css` only feeds Tailwind IntelliSense in the editor (theme + component classes, rewritten by the build when components change); pages never load it
 - Each block's compiled CSS is wrapped in `@scope (:has(> .{name}))` (the block and everything inside it): its utilities only apply inside that block, so several blocks on one page never override each other's classes (e.g. one block's `flex-col` beating another's `xl:flex-row`). Elements you create in `enhance.js` must live inside the block to get its classes
 - See `CONTEXT.md` and `docs/adr/0001-html-first-blocks-tailwind.md`
 
@@ -110,7 +128,12 @@ New blocks are **HTML-first**. You edit only the Block Source `blocks/{name}/{na
         ├── {blockname}.js          # Hand-written decoration
         ├── {blockname}.css         # Hand-written styles
         └── _{blockname}.json       # Hand-written UE definitions, models and filters (header/footer have none)
-├── drafts/                     # Local preview pages (drafts/{blockname}.html, block markup synced by the build)
+├── components/                 # Reusable components used by the blocks (see "Reusable components")
+    └── {name}/
+        ├── {name}.css              # Classes (@utility {name}, {name}-variant…), compiled into every block that uses them; not served
+        ├── {name}.html             # Showcase source (every variant and state); not served
+        └── {name}.js               # Optional behaviour, loaded by data-ui="{name}"
+├── drafts/                     # Local preview pages (drafts/{blockname}.html, block markup synced by the build; drafts/components/{name}.html|css generated showcases)
 ├── docs/adr/                   # Architecture decision records
 ├── aem-kit.config.json         # Project config for aem-kit: name, language, font, color tokens, breakpoints
 ├── .claude/, .cursor/          # Agent adapters managed by aem-kit (point to this file; "criar-bloco" command)
@@ -125,6 +148,7 @@ New blocks are **HTML-first**. You edit only the Block Source `blocks/{name}/{na
     ├── scripts.js                  # Global JavaScript utilities, main entry point for page decoration
     ├── delayed.js                  # Delayed functionality such as martech loading
     ├── render-template.js          # Runtime for HTML-first blocks (fills the Block Source template with authored content), managed by aem-kit
+    ├── ui.js                       # Starts components (data-ui="{name}" → components/{name}/{name}.js), managed by aem-kit
     ├── editor-support.js           # JavaScript functions used to enhance the WYSIWYG authoring experience in Universal Editor
     ├── editor-support-rte.js       # Richtext instrumentation helpers for Universal Editor
     └── dompurify.min.js            # Sanitizer loaded by editor-support.js

@@ -42,6 +42,14 @@ _Avoid_: Compile, transpile, bundle
 Os arquivos produzidos pelo Block Build (`_[name].json`, `[name].js`, `[name].css` e aggregates) que são commitados no git e tratados como somente leitura para humanos.
 _Avoid_: Source, draft, enhance
 
+**Componente**:
+Peça de interface reutilizada por vários blocks (Button, Accordion, Modal…) em `components/{nome}/`: classes Tailwind (`{nome}.css`, só `@utility` com o nome do componente), vitrine (`{nome}.html`) e, opcionalmente, comportamento (`{nome}.js`, carregado pelo marcador `data-ui="{nome}"`). Não tem modelo no Universal Editor: o block é dono do conteúdo, o componente do visual e do comportamento.
+_Avoid_: Block dentro de block, Web Component, CSS global de botão, `component-*.json` (são as definições do UE)
+
+**Vitrine**:
+A página gerada `drafts/components/{nome}.html` (+ `.css`) a partir de `components/{nome}/{nome}.html`: mostra todas as variantes e estados do componente e é validada por html-validate, axe e Lighthouse como um Draft. Página independente, sem `scripts.js`.
+_Avoid_: Storybook, Draft de block
+
 **Draft**:
 Uma página HTML estática completa em `drafts/` para preview local; o markup do block é sincronizado a partir dos defaults dos `data-field` do Block Source a cada Block Build (e em realtime via `aem:watch` / `aem:up`).
 _Avoid_: Storybook story, fixture de teste, fragmento isolado, draft só na criação

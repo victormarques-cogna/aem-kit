@@ -19,36 +19,41 @@ async function loadTools(root) {
 }
 
 /**
+ * @typedef {{ label: string, page: string, ready: string, include: string }} Target
+ *   page: path of the Draft (without .html); ready: selector that means "rendered"; include: axe scope
+ */
+
+/**
  * @param {import('playwright').Browser} browser
  * @param {string} baseUrl
  * @param {Function} AxeBuilder
- * @param {string} blockId
+ * @param {Target} target
  * @returns {Promise<boolean>}
  */
-async function checkBlock(browser, baseUrl, AxeBuilder, blockId) {
+async function checkPage(browser, baseUrl, AxeBuilder, target) {
+  const { label } = target;
   const context = await browser.newContext();
   try {
     const page = await context.newPage();
     // Only the local server: keeps the check fast and independent of the network (fonts, martech).
     await page.route('**/*', (route) => (route.request().url().startsWith(baseUrl) ? route.continue() : route.abort()));
-    await page.goto(`${baseUrl}/drafts/${blockId}`);
+    await page.goto(`${baseUrl}/${target.page}`);
     try {
-      const loaded = `main .${blockId}[data-block-status="loaded"]`;
-      await page.waitForSelector(loaded, { state: 'attached', timeout: 15000 });
+      await page.waitForSelector(target.ready, { state: 'attached', timeout: 15000 });
     } catch {
-      console.error(`✖ a11y ${blockId}: o bloco não carregou em drafts/${blockId}.html (veja erros no console do navegador).`);
+      console.error(`✖ a11y ${label}: a página ${target.page}.html não carregou (veja erros no console do navegador).`);
       return false;
     }
-    const result = await new AxeBuilder({ page }).include(`main .${blockId}`).withTags(TAGS).analyze();
+    const result = await new AxeBuilder({ page }).include(target.include).withTags(TAGS).analyze();
     const blocking = result.violations.filter((v) => BLOCKING.has(v.impact));
     const warnings = result.violations.filter((v) => !BLOCKING.has(v.impact));
     [...blocking, ...warnings].forEach((violation) => {
       const isBlocking = BLOCKING.has(violation.impact);
       const nodes = violation.nodes.slice(0, 3).map((node) => `    → ${node.target.join(' ')}`).join('\n');
-      const title = `${isBlocking ? '✖' : '⚠'} a11y ${blockId} [${violation.impact}] ${violation.id}: ${violation.help}`;
+      const title = `${isBlocking ? '✖' : '⚠'} a11y ${label} [${violation.impact}] ${violation.id}: ${violation.help}`;
       console[isBlocking ? 'error' : 'warn'](`${title}\n    ${violation.helpUrl}\n${nodes}`);
     });
-    if (!blocking.length) console.log(`✔ a11y ${blockId}${warnings.length ? ` (${warnings.length} aviso(s))` : ''}`);
+    if (!blocking.length) console.log(`✔ a11y ${label}${warnings.length ? ` (${warnings.length} aviso(s))` : ''}`);
     return !blocking.length;
   } finally {
     await context.close();
@@ -56,14 +61,27 @@ async function checkBlock(browser, baseUrl, AxeBuilder, blockId) {
 }
 
 /**
- * Renders drafts/{block}.html in headless Chromium and runs axe on the block element.
- * Fails on serious/critical violations; moderate/minor are warnings.
+ * Renders drafts/{block}.html (and drafts/components/{id}.html) in headless Chromium and runs
+ * axe on the block element (or the showcase's main). Fails on serious/critical violations;
+ * moderate/minor are warnings.
  * @param {string} root
  * @param {string[]} blocks
+ * @param {string[]} [components]
  * @returns {Promise<boolean>} true when no blocking violation was found
  */
-export default async function checkA11y(root, blocks) {
-  const targets = blocks.filter((blockId) => existsSync(path.join(root, 'drafts', `${blockId}.html`)));
+export default async function checkA11y(root, blocks, components = []) {
+  /** @type {Target[]} */
+  const targets = [
+    ...blocks.map((blockId) => ({
+      label: blockId,
+      page: `drafts/${blockId}`,
+      ready: `main .${blockId}[data-block-status="loaded"]`,
+      include: `main .${blockId}`,
+    })),
+    ...components.map((id) => ({
+      label: `components/${id}`, page: `drafts/components/${id}`, ready: 'main', include: 'main',
+    })),
+  ].filter((target) => existsSync(path.join(root, `${target.page}.html`)));
   if (!targets.length) return true;
 
   const { chromium, AxeBuilder } = await loadTools(root);
@@ -78,7 +96,7 @@ export default async function checkA11y(root, blocks) {
   try {
     // Sequential on purpose: one page at a time keeps the output readable and memory low.
     const results = await targets.reduce(
-      (queue, blockId) => queue.then(async (done) => [...done, await checkBlock(browser, server.url, AxeBuilder, blockId)]),
+      (queue, target) => queue.then(async (done) => [...done, await checkPage(browser, server.url, AxeBuilder, target)]),
       Promise.resolve([]),
     );
     return results.every(Boolean);
