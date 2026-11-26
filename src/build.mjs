@@ -10,7 +10,7 @@ import assertSourceGate from './source-gate.mjs';
 import syncDraft, { extractDataFieldInners } from './sync-draft.mjs';
 import strings from './i18n.mjs';
 import { compileTailwind, syncIntellisense } from './tailwind.mjs';
-import { FIELD_COMPONENTS, parseOptions } from './fields.mjs';
+import { FIELD_COMPONENTS, parseCondition, parseOptions } from './fields.mjs';
 
 export { GENERATED_HEADER };
 
@@ -46,6 +46,11 @@ function readTemplate(html) {
   const blockFields = [];
   /** @type {Record<string, string>[]} */
   const itemFields = [];
+  // Composite multi-field inside the child item (data-item + data-multi nested in data-item).
+  /** @type {{ attrs: Record<string, string>, fields: Record<string, string>[], at: number } | null} */
+  let nested = null;
+  let nestedDepth = 0;
+  let nestedCollecting = false;
   const tagRe = /<!--[\s\S]*?-->|<\/([a-zA-Z0-9-]+)\s*>|<([a-zA-Z0-9-]+)([^>]*?)(\/?)>/g;
 
   [...html.matchAll(tagRe)].forEach((match) => {
@@ -53,6 +58,10 @@ function readTemplate(html) {
     if (match[1]) {
       const index = stack.lastIndexOf(match[1]);
       if (index >= 0) stack.splice(index);
+      if (nestedDepth && stack.length < nestedDepth) {
+        nestedDepth = 0;
+        nestedCollecting = false;
+      }
       if (itemDepth && stack.length < itemDepth) {
         itemDepth = 0;
         collectingItemFields = false;
@@ -64,7 +73,15 @@ function readTemplate(html) {
     stack.push(match[2]);
     if (match[4] === '/') stack.pop();
     if (attrs['data-block']) block = attrs;
-    if (attrs['data-item']) {
+    if (attrs['data-item'] && item && itemDepth && stack.length > itemDepth) {
+      // Nested list inside the child item: only the first one (inside the first item) is the model.
+      if (!('data-multi' in attrs)) {
+        throw new Error('Um data-item dentro de outro precisa de data-multi (lista editável no painel do item).');
+      }
+      nestedDepth = stack.length;
+      nestedCollecting = collectingItemFields && !nested;
+      if (nestedCollecting) nested = { attrs, fields: [], at: itemFields.length };
+    } else if (attrs['data-item']) {
       if (!item) {
         item = attrs;
         itemDepth = stack.length;
@@ -77,7 +94,9 @@ function readTemplate(html) {
     }
     if (!attrs['data-field']) return;
     const insideItem = item && itemDepth && stack.length >= itemDepth;
-    if (insideItem && collectingItemFields) {
+    if (nestedDepth && stack.length >= nestedDepth) {
+      if (nestedCollecting) nested.fields.push(attrs);
+    } else if (insideItem && collectingItemFields) {
       // data-multi on the item element marks the composite list, not a multi-value sub-field.
       if (attrs === item) {
         const { 'data-multi': ignored, ...field } = attrs;
@@ -96,22 +115,23 @@ function readTemplate(html) {
     multi: Boolean(item && 'data-multi' in item),
     blockFields,
     itemFields,
-    fields: [...blockFields, ...itemFields],
+    nested,
+    fields: [...blockFields, ...itemFields, ...(nested?.fields ?? [])],
   };
 }
 
 /**
  * @param {Record<string, string>} field
  * @param {string} file
- * @returns {object[]} One model field, or two for a link (URL + `{name}Text`)
+ * @returns {object[]}
  */
-function fieldModel(field, file) {
+function baseFieldModel(field, file) {
   const name = field['data-field'];
   const component = field['data-component'] || 'text';
   const label = field['data-label'] || name;
   if (!name) throw new Error(`${file}: data-field sem nome.`);
   if (!FIELD_COMPONENTS.has(component)) {
-    throw new Error(`${file}: data-component="${component}" não é suportado. Use text, richtext, reference, select ou link.`);
+    throw new Error(`${file}: data-component="${component}" não é suportado. Use text, richtext, reference, select, link ou url.`);
   }
   if ('data-multi' in field) {
     if (component !== 'text') {
@@ -159,6 +179,10 @@ function fieldModel(field, file) {
       },
     ];
   }
+  if (component === 'url') {
+    // Only the address (no label field): the <a> keeps its own content.
+    return [{ component: 'aem-content', name, label }];
+  }
   if (component === 'reference') {
     return [{
       component: 'reference',
@@ -175,6 +199,16 @@ function fieldModel(field, file) {
     label,
     valueType: 'string',
   }];
+}
+
+/**
+ * @param {Record<string, string>} field
+ * @param {string} file
+ * @returns {object[]} One model field, or two for a link (URL + `{name}Text`)
+ */
+function fieldModel(field, file) {
+  const condition = parseCondition(field['data-condition'], file);
+  return baseFieldModel(field, file).map((spec) => (condition ? { ...spec, condition } : spec));
 }
 
 /**
@@ -206,6 +240,7 @@ function fieldDefaults(fields, inners) {
     const text = raw.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
     if ('data-multi' in field) values[name] = text ? [text] : [];
     else if (kind === 'select') values[name] = text;
+    else if (kind === 'url') values[name] = field.href && field.href !== '#' ? field.href : '';
     else if (kind === 'link') {
       values[name] = field.href && field.href !== '#' ? field.href : '';
       values[`${name}Text`] = text;
@@ -235,9 +270,36 @@ function componentPartial(blockId, model, file, html) {
     throw new Error(`${file}: nenhum data-field encontrado.`);
   }
 
+  if (model.nested) {
+    // Composite multi-field inside the child item: a repeatable group of fields in the item's
+    // properties panel (e.g. the categories of a menu item), placed where it sits in the item.
+    if (model.multi || !model.item) {
+      throw new Error(`${file}: a lista dentro de um item (data-item + data-multi) só vale em itens filhos (data-item sem data-multi).`);
+    }
+    const nestedId = model.nested.attrs['data-item'];
+    const subFields = uniqueFieldModels(model.nested.fields, file);
+    if (!subFields.length) throw new Error(`${file}: data-item="${nestedId}" precisa de ao menos um data-field.`);
+    const taken = new Set([...blockFields, ...itemFields].map((field) => field.name));
+    [nestedId, ...subFields.map((field) => field.name)].forEach((name) => {
+      if (taken.has(name)) throw new Error(`${file}: campo "${name}" repetido.`);
+    });
+    const condition = parseCondition(model.nested.attrs['data-condition'], file);
+    const before = model.itemFields.slice(0, model.nested.at).flatMap((field) => fieldModel(field, file)).length;
+    itemFields.splice(before, 0, {
+      component: 'container',
+      name: nestedId,
+      label: model.nested.attrs['data-item-title'] || nestedId,
+      multi: true,
+      fields: subFields,
+      ...(condition ? { condition } : {}),
+    });
+  }
+
   const { blockInners, itemInners } = extractDataFieldInners(html);
   const blockValues = fieldDefaults(model.blockFields, blockInners);
-  const itemValues = fieldDefaults(model.itemFields, itemInners);
+  // The nested list's cell has no default value in the UE template (authors add entries).
+  const ownItemInners = model.nested ? itemInners.filter((_, index) => index !== model.nested.at) : itemInners;
+  const itemValues = fieldDefaults(model.itemFields, ownItemInners);
 
   if (model.multi) {
     // Composite multi-field: the item becomes a repeatable group of fields in the block's

@@ -1,4 +1,4 @@
-import { FIELD_COMPONENTS } from './fields.mjs';
+import { FIELD_COMPONENTS, LINK_COMPONENTS } from './fields.mjs';
 
 const TAG_RE = /<!--[\s\S]*?-->|<\/([a-zA-Z0-9-]+)\s*>|<([a-zA-Z0-9-]+)([^>]*?)(\/?)>/g;
 const ATTR_RE = /([:@\w-]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|(\S+)))?/g;
@@ -43,11 +43,11 @@ export default function assertSourceGate(html, file) {
       const component = attrs['data-component'] || 'text';
       if (!FIELD_COMPONENTS.has(component)) {
         errors.push(
-          `${file}: data-component="${component}" não é suportado. Use text, richtext, reference, select ou link.`,
+          `${file}: data-component="${component}" não é suportado. Use text, richtext, reference, select, link ou url.`,
         );
       }
-      if (component === 'link' && tag !== 'a') {
-        errors.push(`${file}: data-field="${attrs['data-field']}" (link) precisa estar num <a>.`);
+      if (LINK_COMPONENTS.has(component) && tag !== 'a') {
+        errors.push(`${file}: data-field="${attrs['data-field']}" (${component}) precisa estar num <a>.`);
       }
       const label = (attrs['data-label'] || attrs['aria-label'] || '').trim();
       if (!label) {

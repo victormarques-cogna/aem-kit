@@ -18,6 +18,20 @@ function parseAttrs(source) {
 }
 
 /**
+ * Composite multi-field cell as AEM delivers it: one <li> per entry when an entry is a
+ * single element, otherwise entries separated by <hr> with one paragraph per field.
+ * @param {string[][]} entries
+ * @returns {string}
+ */
+function compositeCell(entries) {
+  const wrap = (inner) => (/^<(p|ul|ol|h[1-6]|pre)\b/i.test(inner) ? inner : `<p>${inner}</p>`);
+  if (entries.every((entry) => entry.length === 1)) {
+    return `<ul>${entries.map(([inner]) => `<li>${inner}</li>`).join('')}</ul>`;
+  }
+  return `<hr>${entries.map((entry) => `${entry.filter(Boolean).map(wrap).join('')}<hr>`).join('')}`;
+}
+
+/**
  * @param {string} html
  * Draft cell content of every data-field, in document order, as AEM delivers it.
  * @param {string} html
@@ -34,6 +48,15 @@ export function extractDataFieldInners(html) {
   let multiAt = -1;
   const stack = [];
   let itemDepth = 0;
+  // Composite multi-field inside the child item: its entries become one cell of the item.
+  let nestedDepth = 0;
+  /** @type {string[][] | null} */
+  let nestedEntries = null;
+  let nestedAt = -1;
+  const closeNested = () => {
+    if (nestedEntries && currentEntry) currentEntry[nestedAt] = compositeCell(nestedEntries);
+    nestedEntries = null;
+  };
   const openRe = /<!--[\s\S]*?-->|<\/([a-zA-Z0-9-]+)\s*>|<([a-zA-Z0-9-]+)([^>]*?)(\/?)>/gi;
   let match = openRe.exec(html);
 
@@ -44,7 +67,9 @@ export function extractDataFieldInners(html) {
     } else if (match[1]) {
       const index = stack.lastIndexOf(match[1].toLowerCase());
       if (index >= 0) stack.splice(index);
+      if (nestedDepth && stack.length < nestedDepth) nestedDepth = 0;
       if (itemDepth && stack.length < itemDepth) {
+        closeNested();
         itemDepth = 0;
         currentEntry = null;
       }
@@ -54,7 +79,16 @@ export function extractDataFieldInners(html) {
       const attrs = parseAttrs(match[3] || '');
       stack.push(tag.toLowerCase());
       if (match[4] === '/') stack.pop();
-      if (attrs['data-item'] && !itemDepth) {
+      if (attrs['data-item'] && itemDepth && currentEntry) {
+        // One more entry of the nested list (the first one starts the cell).
+        if (!nestedEntries) {
+          nestedEntries = [];
+          nestedAt = currentEntry.length;
+          currentEntry.push('');
+        }
+        nestedEntries.push([]);
+        nestedDepth = stack.length;
+      } else if (attrs['data-item'] && !itemDepth) {
         itemDepth = stack.length;
         currentEntry = [];
         itemEntries.push(currentEntry);
@@ -67,7 +101,8 @@ export function extractDataFieldInners(html) {
         const insideItem = itemDepth && stack.length >= itemDepth;
         const options = parseOptions(attrs['data-options']);
         const value = options[0]?.value ?? '';
-        if (insideItem && currentEntry) {
+        if (nestedDepth && stack.length >= nestedDepth && nestedEntries) nestedEntries.at(-1).push(value);
+        else if (insideItem && currentEntry) {
           if (!itemSelect) itemSelect = { index: currentEntry.length, options };
           currentEntry.push(value);
         } else blockInners.push(value);
@@ -97,7 +132,18 @@ export function extractDataFieldInners(html) {
         let value = inner;
         if ('data-multi' in attrs && !attrs['data-item']) value = `<ul><li>${inner}</li></ul>`;
         if (component === 'link') value = `<p><a href="${escapeAttr(attrs.href || '#')}">${inner}</a></p>`;
-        if (insideItem && currentEntry) currentEntry.push(value);
+        if (component === 'url') {
+          // Only the address is authored: AEM delivers it as a link to itself.
+          const href = attrs.href && attrs.href !== '#' ? escapeAttr(attrs.href) : '';
+          value = href ? `<p><a href="${href}">${href}</a></p>` : '';
+        }
+        // A field element may hold other fields (e.g. a url <a> with a text <span>): keep parsing inside.
+        if (component === 'url' && match[4] !== '/') {
+          openRe.lastIndex = match.index + match[0].length;
+          stack.push(tag.toLowerCase());
+        }
+        if (nestedDepth && stack.length >= nestedDepth && nestedEntries) nestedEntries.at(-1).push(value);
+        else if (insideItem && currentEntry) currentEntry.push(value);
         else blockInners.push(value);
       }
       match = openRe.exec(html);
@@ -112,20 +158,6 @@ export function extractDataFieldInners(html) {
   return {
     blockInners, itemInners, itemVariants, multiAt,
   };
-}
-
-/**
- * Composite multi-field cell as AEM delivers it: one <li> per entry when an entry is a
- * single element, otherwise entries separated by <hr> with one paragraph per field.
- * @param {string[][]} entries
- * @returns {string}
- */
-function compositeCell(entries) {
-  const wrap = (inner) => (/^<(p|ul|ol|h[1-6]|pre)\b/i.test(inner) ? inner : `<p>${inner}</p>`);
-  if (entries.every((entry) => entry.length === 1)) {
-    return `<ul>${entries.map(([inner]) => `<li>${inner}</li>`).join('')}</ul>`;
-  }
-  return `<hr>${entries.map((entry) => `${entry.filter(Boolean).map(wrap).join('')}<hr>`).join('')}`;
 }
 
 /**

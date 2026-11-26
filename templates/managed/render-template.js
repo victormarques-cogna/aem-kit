@@ -11,6 +11,7 @@ const AUTHORING_ATTRS = [
   'data-label',
   'data-multi',
   'data-options',
+  'data-condition',
 ];
 
 /**
@@ -81,6 +82,17 @@ function fillLink(slot, cell) {
 }
 
 /**
+ * Url: only the address is authored (delivered as a link or as text); the <a> keeps its content.
+ * @param {Element} slot Template <a>
+ * @param {Element} [cell]
+ */
+function fillUrl(slot, cell) {
+  const href = cell?.querySelector('a')?.getAttribute('href') || cell?.textContent.trim();
+  if (href) slot.setAttribute('href', href);
+  else slot.removeAttribute('href');
+}
+
+/**
  * Copies authored cells into template slots, in document order.
  * @param {Element[]} slots Field slots
  * @param {Element[]} cells Authored cells
@@ -99,6 +111,10 @@ function fillSlots(slots, cells) {
     }
     if (kind === 'link') {
       fillLink(slot, cell);
+      return;
+    }
+    if (kind === 'url') {
+      fillUrl(slot, cell);
       return;
     }
     if (!cell) return;
@@ -154,8 +170,13 @@ function compositeEntries(cell) {
  * @param {Element[]} elements Elements of the entry
  */
 function fillEntry(slots, elements) {
+  const kinds = slots.map((slot) => slot.getAttribute('data-component') || 'text');
   const pictures = elements.filter((el) => el.querySelector('picture, img') || el.matches('picture, img'));
-  const links = elements.filter((el) => !pictures.includes(el) && (el.matches('a') || el.querySelector('a')));
+  // Links only go to link/url fields; without those, links (e.g. a richtext list) count as text.
+  const wantsLinks = kinds.some((kind) => kind === 'link' || kind === 'url');
+  const links = wantsLinks
+    ? elements.filter((el) => !pictures.includes(el) && (el.matches('a') || el.querySelector('a')))
+    : [];
   const texts = elements.filter((el) => !pictures.includes(el) && !links.includes(el));
 
   const textKinds = ['text', 'richtext', 'select'];
@@ -171,6 +192,8 @@ function fillEntry(slots, elements) {
       else slot.replaceChildren();
     } else if (kind === 'link') {
       fillLink(slot, links.shift());
+    } else if (kind === 'url') {
+      fillUrl(slot, links.shift());
     } else if (kind === 'richtext') {
       // A richtext may span several blocks (<p>, <ul>...): it takes every text block
       // except one for each text/richtext/select slot still to be filled after it.
@@ -214,6 +237,23 @@ function fillComposite(itemTemplate, cell) {
 }
 
 /**
+ * Fills a child item: its own fields, plus a nested list (data-item + data-multi inside the item,
+ * e.g. the categories of a menu item), which takes one cell and is filled like a composite.
+ * @param {Element} item Clone of the item template
+ * @param {Element[]} cells Cells of the authored item row
+ */
+function fillItem(item, cells) {
+  // The item element itself may be a field (e.g. a select that colors the card).
+  const slots = [...item.querySelectorAll('[data-field], [data-item]')]
+    .filter((slot) => slot.parentElement.closest('[data-item]') === item);
+  if (item.hasAttribute('data-field')) slots.unshift(item);
+  slots.forEach((slot, index) => {
+    if (slot !== item && slot.hasAttribute('data-item')) fillComposite(slot, cells[index]);
+    else fillSlots([slot], [cells[index]]);
+  });
+}
+
+/**
  * Paints an authored block with the HTML template produced by build-blocks.
  * @param {Element} block Block element
  * @param {string} template HTML source from blocks/{name}/{name}.html
@@ -253,10 +293,7 @@ export default function renderTemplate(block, template) {
       const cells = [...row.children];
       if (!cells.some(cellHasContent)) return;
       const item = templateEl.cloneNode(true);
-      // The item element itself may be a field (e.g. a select that colors the card).
-      const slots = [...item.querySelectorAll('[data-field]')];
-      if (item.hasAttribute('data-field')) slots.unshift(item);
-      fillSlots(slots, cells);
+      fillItem(item, cells);
       moveInstrumentation(row, item);
       host.append(item);
     });
