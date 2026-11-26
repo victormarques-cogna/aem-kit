@@ -4,6 +4,7 @@ import check from '../src/check.mjs';
 import { requireConfig } from '../src/config.mjs';
 import generateBlock, { generateComponent } from '../src/generate.mjs';
 import { listComponents } from '../src/components.mjs';
+import { regenerateLock } from '../src/lock.mjs';
 import init from '../src/init.mjs';
 import checkLighthouse, { deployedBase, lighthouseSettings, waitForCodeSync } from '../src/lighthouse.mjs';
 import { findProjectRoot, kitPackage } from '../src/project.mjs';
@@ -23,6 +24,8 @@ Uso: aem-kit <comando> [opções]
   build [nome...]             Block Build (todos os blocos ou só os informados) + build:json
   watch                       rebuild ao salvar blocks/{nome}/{nome}.{html,enhance.js} ou components/
   up [args do aem up]         servidor AEM (drafts/) + watch
+  lock                        regera o package-lock.json no Linux (Docker, node:24, como o CI) e confere
+                              com npm ci --dry-run
   check [--staged]            build + ESLint + Stylelint + Prettier + html-validate + axe + Lighthouse
                               (--staged: só o que está no commit, usado no pre-commit)
   lighthouse [nome...] [--url <url>] [--deployed [--wait-sync]] [--categories a,b] [--runs n]
@@ -68,6 +71,11 @@ try {
       break;
     case 'up':
       up(ctx(), args);
+      break;
+    case 'lock':
+      console.log('▸ package-lock.json no Linux (node:24)');
+      await regenerateLock(root);
+      console.log('✔ package-lock.json regerado e conferido com npm ci --dry-run');
       break;
     case 'check':
       if (!(await check(ctx(), { staged: flag('--staged') }))) process.exitCode = 1;

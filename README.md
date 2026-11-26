@@ -31,6 +31,7 @@ O init exige working tree limpo (só o `aem-kit.config.json` pode estar pendente
 | `npm run aem:generate-component -- <nome> [--js]` | Cria um componente reutilizável em `components/<nome>/` (classes `@utility` + vitrine; `--js` inclui o comportamento) e roda o build |
 | `npm run aem:build [-- <nome>]` | Block Build (todos ou um bloco) + `build:json`; sem nome, também as vitrines dos componentes |
 | `npm run aem:up` | Servidor AEM com `drafts/` + rebuild ao salvar |
+| `npm run aem:lock` | Regera o `package-lock.json` no Linux (Docker, `node:24`, como o CI) e confere com `npm ci --dry-run`. Use depois de mudar dependências |
 | `npm run check` | Build + ESLint + Stylelint + Prettier + html-validate + axe + Lighthouse (o que o CI roda) |
 | Tracking | `tracking` no `aem-kit.config.json` (GTM + dataLayer): região gerenciada no `head.html`, `scripts/datalayer.js` e cliques via `data-track` nos Block Sources |
 | `npm run aem:lighthouse` | Lighthouse nos Drafts (`-- <bloco>` ou `-- components/<nome>`), numa URL (`-- --url <url>`) ou no site publicado da branch (`-- --deployed`); nota mínima em `lighthouse.minScore` (padrão 90) |
@@ -46,6 +47,16 @@ Peças de interface usadas por vários blocos (Button, Accordion, Modal…) fica
 - `<nome>.js` (opcional): comportamento, carregado sob demanda por `data-ui="<nome>"` via `scripts/ui.js`, antes do `enhance.js` do bloco.
 
 Detalhes e regras na seção "Reusable components" do `AGENTS.md` gerado.
+
+## package-lock.json e o CI (Docker)
+
+O npm no macOS pode gravar um `package-lock.json` que o `npm ci` do runner Linux recusa ("not in sync"), e aí todos os jobs falham antes de validar qualquer coisa. Por isso o lock é conferido e gerado num container `node:24`, igual ao CI:
+
+- `npm run aem:lock` regera e confere o lock;
+- o pre-commit confere o lock quando `package.json` ou `package-lock.json` estão no commit (bloqueia se estiver fora de sincronia);
+- o init confere depois do `npm install` e regera se precisar.
+
+Sem o Docker rodando, essas verificações só avisam.
 
 ## O que o init gerencia
 

@@ -9,6 +9,7 @@ import { KIT_ROOT, kitPackage, run } from './project.mjs';
 import { intellisenseCss } from './tailwind.mjs';
 import { fontFallbackFace, fontNames, fontVars } from './theme.mjs';
 import { dataLayerDefaultsSource, headWithTracking } from './tracking.mjs';
+import { regenerateLock, verifyLock } from './lock.mjs';
 
 const T = (file) => path.join(KIT_ROOT, 'templates', file);
 const LANGUAGE_NAMES = { 'pt-BR': 'Portuguese (PT-BR)', en: 'English' };
@@ -198,6 +199,7 @@ export default async function init(root, opts = {}) {
     'aem:init': 'aem-kit init',
     'aem:generate-block': 'aem-kit generate-block',
     'aem:generate-component': 'aem-kit generate-component',
+    'aem:lock': 'aem-kit lock',
     'aem:build': 'aem-kit build',
     'aem:watch': 'aem-kit watch',
     'aem:up': 'aem-kit up',
@@ -374,6 +376,17 @@ ${fill(template('managed/criar-bloco.md'), { ARGS: '$ARGUMENTS' })}`);
   if (!opts.skipInstall) {
     console.log('\n▸ npm install');
     await run('npm', ['install'], { cwd: root });
+    // npm on macOS may write a lock that `npm ci` on the Linux CI rejects: fix it right away.
+    console.log('\n▸ package-lock.json no Linux (node:24, como o CI)');
+    const lock = await verifyLock(root);
+    if (!lock.docker) {
+      console.warn('⚠ Docker não está rodando: o package-lock.json não foi conferido no Linux. Rode `npm run aem:lock` antes de subir.');
+    } else if (!lock.ok) {
+      await regenerateLock(root);
+      note('regerado no Linux', 'package-lock.json');
+    } else {
+      console.log('✔ npm ci --dry-run ok');
+    }
     console.log('\n▸ npx playwright install chromium');
     await run('npx', ['--no-install', 'playwright', 'install', 'chromium'], { cwd: root });
     console.log('\n▸ Block Build');

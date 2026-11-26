@@ -7,12 +7,14 @@ import {
   AGGREGATE_PATHS, buildBlocks, buildJson, componentArtifactPaths, generatedPaths, hasHtmlSource, listHtmlFirstBlocks,
 } from './build.mjs';
 import { listComponents } from './components.mjs';
+import { LOCK_HINT, verifyLock } from './lock.mjs';
 import { projectBin, run } from './project.mjs';
 
 const BLOCK_SOURCE_RE = /^blocks\/([^/]+)\/\1\.(html|enhance\.js)$/;
 // Any change under components/ can change every block (shared classes) and the showcases.
 const COMPONENT_RE = /^components\//;
 const PARTIAL_RE = /(^|\/)_[^/]*\.json$/;
+const LOCK_RE = /^(package\.json|package-lock\.json)$/;
 
 /**
  * @param {string} root
@@ -116,6 +118,20 @@ export default async function check(ctx, { staged = false } = {}) {
       console.error(`Generated Artifacts desatualizados (o build acabou de regerá-los; revise e commite):\n  ${stale.join('\n  ')}`);
       failures.push('Generated Artifacts');
     }
+  }
+
+  // Dependências no commit: o lock precisa passar no `npm ci` do CI (Linux).
+  if (staged && files.some((file) => LOCK_RE.test(file))) {
+    await step('package-lock.json (Linux)', async () => {
+      const lock = await verifyLock(root);
+      if (!lock.docker) {
+        console.warn('⚠ Docker não está rodando: o package-lock.json não foi conferido no Linux (o CI confere).');
+        return true;
+      }
+      if (!lock.ok) console.error(`${LOCK_HINT}\n${lock.details}`);
+      else console.log('✔ npm ci --dry-run ok');
+      return lock.ok;
+    }, failures);
   }
 
   const pick = (re) => (files ? files.filter((file) => re.test(file)) : null);
