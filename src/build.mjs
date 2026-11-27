@@ -31,26 +31,34 @@ function parseAttrs(source) {
 }
 
 /**
+ * Kinds of data-item:
+ * - child item: data-item without data-multi (children of the block in the content tree);
+ * - block list: data-item + data-multi outside a child item (composite multi-field in the block's
+ *   properties panel). Without child items it is the block's only list (`multi`);
+ * - nested list: data-item + data-multi inside the child item (composite in the item's panel).
+ * Extra data-item siblings of the same kind are Draft samples; only the first defines the model.
  * @param {string} html
  * @returns {object} Block marker, optional item marker and fields
  */
 function readTemplate(html) {
   const stack = [];
   let block = null;
-  let item = null;
-  let itemDepth = 0;
-  let itemAt = 0;
-  // Extra data-item siblings are Draft samples; only the first defines the model.
-  let collectingItemFields = false;
+  /** @type {Record<string, string> | null} */
+  let child = null;
+  let childAt = 0;
+  /** @type {{ attrs: Record<string, string>, fields: Record<string, string>[], at: number } | null} */
+  let list = null;
+  /** @type {{ attrs: Record<string, string>, fields: Record<string, string>[], at: number } | null} */
+  let nested = null;
   /** @type {Record<string, string>[]} */
   const blockFields = [];
   /** @type {Record<string, string>[]} */
   const itemFields = [];
-  // Composite multi-field inside the child item (data-item + data-multi nested in data-item).
-  /** @type {{ attrs: Record<string, string>, fields: Record<string, string>[], at: number } | null} */
-  let nested = null;
-  let nestedDepth = 0;
-  let nestedCollecting = false;
+  /** @type {{ depth: number, kind: 'child' | 'list' | 'nested', collect: boolean }[]} */
+  const scopes = [];
+  const unwind = () => {
+    while (scopes.length && stack.length < scopes.at(-1).depth) scopes.pop();
+  };
   const tagRe = /<!--[\s\S]*?-->|<\/([a-zA-Z0-9-]+)\s*>|<([a-zA-Z0-9-]+)([^>]*?)(\/?)>/g;
 
   [...html.matchAll(tagRe)].forEach((match) => {
@@ -58,65 +66,79 @@ function readTemplate(html) {
     if (match[1]) {
       const index = stack.lastIndexOf(match[1]);
       if (index >= 0) stack.splice(index);
-      if (nestedDepth && stack.length < nestedDepth) {
-        nestedDepth = 0;
-        nestedCollecting = false;
-      }
-      if (itemDepth && stack.length < itemDepth) {
-        itemDepth = 0;
-        collectingItemFields = false;
-      }
+      unwind();
       return;
     }
 
     const attrs = parseAttrs(match[3] || '');
     stack.push(match[2]);
-    if (match[4] === '/') stack.pop();
     if (attrs['data-block']) block = attrs;
-    if (attrs['data-item'] && item && itemDepth && stack.length > itemDepth) {
-      // Nested list inside the child item: only the first one (inside the first item) is the model.
-      if (!('data-multi' in attrs)) {
-        throw new Error('Um data-item dentro de outro precisa de data-multi (lista editável no painel do item).');
-      }
-      nestedDepth = stack.length;
-      nestedCollecting = collectingItemFields && !nested;
-      if (nestedCollecting) nested = { attrs, fields: [], at: itemFields.length };
-    } else if (attrs['data-item']) {
-      if (!item) {
-        item = attrs;
-        itemDepth = stack.length;
-        itemAt = blockFields.length;
-        collectingItemFields = true;
-      } else if (!itemDepth) {
-        itemDepth = stack.length;
-        collectingItemFields = false;
+    if (attrs['data-item']) {
+      const parent = scopes.at(-1);
+      const multi = 'data-multi' in attrs;
+      const depth = stack.length;
+      if (!parent && multi) {
+        const first = !list;
+        if (first) list = { attrs, fields: [], at: blockFields.length };
+        scopes.push({ depth, kind: 'list', collect: first });
+      } else if (!parent) {
+        const first = !child;
+        if (first) {
+          child = attrs;
+          childAt = blockFields.length;
+        }
+        scopes.push({ depth, kind: 'child', collect: first });
+      } else if (parent.kind === 'child') {
+        if (!multi) {
+          throw new Error('Um data-item dentro de outro precisa de data-multi (lista editável no painel do item).');
+        }
+        const first = parent.collect && !nested;
+        if (first) nested = { attrs, fields: [], at: itemFields.length };
+        scopes.push({ depth, kind: 'nested', collect: first });
+      } else {
+        throw new Error('Um data-item dentro de uma lista (data-item + data-multi) não é suportado.');
       }
     }
-    if (!attrs['data-field']) return;
-    const insideItem = item && itemDepth && stack.length >= itemDepth;
-    if (nestedDepth && stack.length >= nestedDepth) {
-      if (nestedCollecting) nested.fields.push(attrs);
-    } else if (insideItem && collectingItemFields) {
-      // data-multi on the item element marks the composite list, not a multi-value sub-field.
-      if (attrs === item) {
-        const { 'data-multi': ignored, ...field } = attrs;
-        itemFields.push(field);
-      } else itemFields.push(attrs);
-    } else if (!insideItem) {
-      blockFields.push(attrs);
+    if (attrs['data-field']) {
+      const scope = scopes.at(-1);
+      // data-multi on the item element marks the list, not a multi-value sub-field.
+      const { 'data-multi': ignored, ...own } = attrs;
+      const field = attrs['data-item'] ? own : attrs;
+      if (!scope) blockFields.push(field);
+      else if (scope.collect && scope.kind === 'child') itemFields.push(field);
+      else if (scope.collect && scope.kind === 'list') list.fields.push(field);
+      else if (scope.collect) nested.fields.push(field);
+    }
+    if (match[4] === '/') {
+      stack.pop();
+      unwind();
     }
   });
 
   if (!block?.['data-block']) throw new Error('O HTML precisa de um elemento com data-block.');
+  if (child) {
+    return {
+      block,
+      item: child,
+      itemAt: childAt,
+      multi: false,
+      list,
+      blockFields,
+      itemFields,
+      nested,
+      fields: [...blockFields, ...(list?.fields ?? []), ...itemFields, ...(nested?.fields ?? [])],
+    };
+  }
   return {
     block,
-    item,
-    itemAt,
-    multi: Boolean(item && 'data-multi' in item),
+    item: list?.attrs ?? null,
+    itemAt: list?.at ?? 0,
+    multi: Boolean(list),
+    list: null,
     blockFields,
-    itemFields,
-    nested,
-    fields: [...blockFields, ...itemFields, ...(nested?.fields ?? [])],
+    itemFields: list?.fields ?? [],
+    nested: null,
+    fields: [...blockFields, ...(list?.fields ?? [])],
   };
 }
 
@@ -292,6 +314,27 @@ function componentPartial(blockId, model, file, html) {
       multi: true,
       fields: subFields,
       ...(condition ? { condition } : {}),
+    });
+  }
+
+  if (model.list) {
+    // Composite multi-field in the block's own properties panel, next to the child items
+    // (e.g. the menu items of a header whose children are the submenu categories).
+    const listId = model.list.attrs['data-item'];
+    const subFields = uniqueFieldModels(model.list.fields, file);
+    if (!subFields.length) throw new Error(`${file}: data-item="${listId}" precisa de ao menos um data-field.`);
+    const taken = new Set([...blockFields, ...itemFields].map((field) => field.name));
+    [listId, ...subFields.map((field) => field.name)].forEach((name) => {
+      if (taken.has(name)) throw new Error(`${file}: campo "${name}" repetido.`);
+      taken.add(name);
+    });
+    const before = model.blockFields.slice(0, model.list.at).flatMap((field) => fieldModel(field, file)).length;
+    blockFields.splice(before, 0, {
+      component: 'container',
+      name: listId,
+      label: model.list.attrs['data-item-title'] || listId,
+      multi: true,
+      fields: subFields,
     });
   }
 

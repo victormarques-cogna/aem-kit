@@ -262,8 +262,40 @@ export default function renderTemplate(block, template) {
   const root = new DOMParser().parseFromString(template, 'text/html').body.firstElementChild;
   if (!root) return;
 
-  const itemTemplate = root.querySelector('[data-item]');
-  if (itemTemplate?.hasAttribute('data-multi')) {
+  // Top-level data-items: child items (no data-multi) and/or a list in the block panel.
+  const topItems = [...root.querySelectorAll('[data-item]')]
+    .filter((el) => !el.parentElement.closest('[data-item]'));
+  const childTemplate = topItems.find((el) => !el.hasAttribute('data-multi'));
+  const listTemplate = topItems.find((el) => el.hasAttribute('data-multi'));
+  const itemTemplate = childTemplate && listTemplate ? childTemplate : root.querySelector('[data-item]');
+  if (childTemplate && listTemplate) {
+    // Block fields (the list among them, one cell each) followed by one row per child item.
+    const blockSlots = [...root.querySelectorAll('[data-field], [data-item]')].filter((slot) => {
+      if (slot.hasAttribute('data-item')) return slot === listTemplate;
+      return !slot.closest('[data-item]');
+    });
+    const rows = [...block.children];
+    const blockRows = rows.slice(0, blockSlots.length);
+    const itemRows = rows.slice(blockSlots.length);
+    blockSlots.forEach((slot, index) => {
+      const cell = blockRows[index]?.firstElementChild;
+      if (slot === listTemplate) fillComposite(slot, cell);
+      else fillSlots([slot], [cell]);
+    });
+
+    const host = childTemplate.parentElement;
+    const templateEl = takeItemTemplate(host, childTemplate);
+    itemRows.forEach((row) => {
+      const cells = [...row.children];
+      // In the Universal Editor (instrumented row) an empty item stays: a new item shows up.
+      if (!cells.some(cellHasContent) && !row.hasAttribute('data-aue-resource')) return;
+      const item = templateEl.cloneNode(true);
+      fillItem(item, cells);
+      moveInstrumentation(row, item);
+      host.append(item);
+    });
+    if (block.firstElementChild) moveInstrumentation(block.firstElementChild, root);
+  } else if (itemTemplate?.hasAttribute('data-multi')) {
     // Composite multi-field: one cell (row) per block field, the item list being one of them.
     const cells = [...block.children].flatMap((row) => [...row.children]);
     const slots = [...root.querySelectorAll('[data-field], [data-item]')]
