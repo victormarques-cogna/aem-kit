@@ -291,7 +291,7 @@ export default function renderTemplate(block, template) {
     const templateEl = takeItemTemplate(host, itemTemplate);
     itemRows.forEach((row) => {
       const cells = [...row.children];
-      // In the Universal Editor (instrumented row) an empty item stays: it is how a new item shows up.
+      // In the Universal Editor (instrumented row) an empty item stays: a new item shows up.
       if (!cells.some(cellHasContent) && !row.hasAttribute('data-aue-resource')) return;
       const item = templateEl.cloneNode(true);
       fillItem(item, cells);
