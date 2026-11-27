@@ -1,6 +1,6 @@
 {
   "name": "aem-kit",
-  "version": "0.11.0",
+  "version": "0.11.1",
   "description": "Toolchain HTML-first + Tailwind para projetos AEM Edge Delivery (xwalk): init, geração de blocos, build e validações de pre-commit (incluindo Lighthouse).",
   "type": "module",
   "bin": {
